@@ -21,7 +21,7 @@ class FountaineApp extends StatelessWidget {
         ),
         useMaterial3: true, // aktifin style Material 3
       ),
-      initialRoute: Routes.home,
+      initialRoute: Routes.notifications,
       routes: Routes.routes,
     );
   }

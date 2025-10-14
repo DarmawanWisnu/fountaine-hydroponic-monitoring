@@ -9,7 +9,7 @@ import 'package:fountaine/screens/monitor/monitor_screen.dart';
 import 'package:fountaine/screens/settings/settings_screen.dart';
 import 'package:fountaine/screens/auth/forgot_password_screen.dart';
 import 'package:fountaine/screens/profile/profile_screen.dart';
-import 'package:fountaine/screens/splash_screen.dart';
+import 'package:fountaine/screens/notifications/notification_screen.dart';
 // import 'package:fountaine/screens/auth/error_screen.dart';
 
 class Routes {
@@ -24,6 +24,7 @@ class Routes {
   static const settings = '/settings';
   static const forgotPassword = '/forgot_password';
   static const profile = '/profile';
+  static const notifications = '/notifications';
   // static const error = '/error';
 
   static final routes = <String, WidgetBuilder>{
@@ -33,6 +34,7 @@ class Routes {
     verify: (c) => const VerifyScreen(),
     home: (c) => const HomeScreen(),
     monitor: (c) => const MonitorScreen(),
+    notifications: (c) => const NotificationScreen(),
     history: (c) => const HistoryScreen(),
     addKit: (c) => const AddKitScreen(),
     settings: (c) => const SettingsScreen(),

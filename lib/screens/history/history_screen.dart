@@ -1,63 +1,83 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class HistoryScreen extends StatefulWidget {
+// Providers (sinkron dummy dari kit + notif)
+import '../../providers/kit_provider.dart';
+import '../../providers/notification_provider.dart';
+
+// Argumen route satu-satunya
+import '../../models/nav_args.dart';
+
+class HistoryScreen extends ConsumerStatefulWidget {
   const HistoryScreen({super.key});
 
   @override
-  State<HistoryScreen> createState() => _HistoryScreenState();
+  ConsumerState<HistoryScreen> createState() => _HistoryScreenState();
 }
 
-class _HistoryScreenState extends State<HistoryScreen> {
-  DateTime? selectedDate;
-
-  // Dummy data
-  final List<Map<String, dynamic>> _historyData = [
-    {
-      "date": DateTime(2025, 10, 8, 16, 30, 34),
-      "kit": "Kit 1",
-      "id": "SUF-UINJKT-HM-F2000",
-      "ph": 6.7,
-      "ppm": 300,
-      "humidity": 75,
-      "temperature": 28,
-    },
-    {
-      "date": DateTime(2025, 10, 8, 12, 30, 34),
-      "kit": "Kit 1",
-      "id": "SUF-UINJKT-HM-F2000",
-      "ph": 6.7,
-      "ppm": 300,
-      "humidity": 75,
-      "temperature": 28,
-    },
-    {
-      "date": DateTime(2025, 10, 7, 14, 15, 12),
-      "kit": "Kit 1",
-      "id": "SUF-UINJKT-HM-F2000",
-      "ph": 6.6,
-      "ppm": 310,
-      "humidity": 72,
-      "temperature": 27,
-    },
-  ];
+class _HistoryScreenState extends ConsumerState<HistoryScreen> {
+  DateTime? selectedDate; // tanggal filter aktif
+  final ScrollController _scroll = ScrollController();
+  final Map<int, GlobalKey> _itemKeys = {}; // key tiap item utk ensureVisible
+  DateTime? _pendingTargetTime; // target loncat (dari args)
 
   static const Color _bg = Color(0xFFF6FBF6);
   static const Color _primary = Color(0xFF154B2E);
   static const Color _muted = Color(0xFF7A7A7A);
 
   @override
+  void initState() {
+    super.initState();
+    // Ambil args setelah frame terpasang
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final raw = ModalRoute.of(context)?.settings.arguments;
+      final args = raw is HistoryRouteArgs ? raw : null; // aman: satu tipe saja
+      if (args?.targetTime != null) {
+        _pendingTargetTime = args!.targetTime;
+        setState(() {
+          selectedDate = DateTime(
+            args.targetTime!.year,
+            args.targetTime!.month,
+            args.targetTime!.day,
+          );
+        });
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final s = MediaQuery.of(context).size.width / 375.0;
+
+    // Data dari providers
+    final kits = ref.watch(kitListProvider);
+    final notifs = ref.watch(notificationListProvider);
+
+    // Bangun history dummy sinkron (PPM/PH pas dengan notifikasi)
+    final history = _buildHistoryFromProviders(
+      kits,
+      notifs,
+    )..sort((a, b) => (b['date'] as DateTime).compareTo(a['date'] as DateTime));
+
+    // Filter by selectedDate (jika ada)
     final filteredData = selectedDate == null
-        ? _historyData
-        : _historyData
-              .where(
-                (item) =>
-                    DateFormat('yyyy-MM-dd').format(item['date']) ==
-                    DateFormat('yyyy-MM-dd').format(selectedDate!),
-              )
-              .toList();
+        ? history
+        : history.where((item) {
+            final d1 = DateFormat(
+              'yyyy-MM-dd',
+            ).format(item['date'] as DateTime);
+            final d2 = DateFormat('yyyy-MM-dd').format(selectedDate!);
+            return d1 == d2;
+          }).toList();
+
+    // Setelah list dirender, kalau ada target, loncat
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_pendingTargetTime != null) {
+        _jumpToTarget(_pendingTargetTime!, filteredData);
+        _pendingTargetTime = null;
+      }
+    });
 
     return Scaffold(
       backgroundColor: _bg,
@@ -67,7 +87,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header
+              // ===== Header =====
               Row(
                 children: [
                   CircleAvatar(
@@ -101,7 +121,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
               SizedBox(height: 16 * s),
 
-              // Date Picker Dropdown
+              // ===== Date Picker =====
               GestureDetector(
                 onTap: () async {
                   final picked = await showDatePicker(
@@ -112,6 +132,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   );
                   if (picked != null) {
                     setState(() => selectedDate = picked);
+                    _pendingTargetTime = null; // reset target
                   }
                 },
                 child: Container(
@@ -148,6 +169,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
               SizedBox(height: 18 * s),
 
+              // ===== List / Empty =====
               if (filteredData.isEmpty)
                 Expanded(
                   child: Center(
@@ -160,13 +182,22 @@ class _HistoryScreenState extends State<HistoryScreen> {
               else
                 Expanded(
                   child: ListView.builder(
+                    controller: _scroll,
                     itemCount: filteredData.length,
                     itemBuilder: (context, index) {
                       final item = filteredData[index];
+                      final date = item['date'] as DateTime;
                       final formattedDate = DateFormat(
                         'd MMMM yyyy, HH:mm:ss',
-                      ).format(item['date']);
+                      ).format(date);
+
+                      final key = _itemKeys.putIfAbsent(
+                        date.millisecondsSinceEpoch,
+                        () => GlobalKey(),
+                      );
+
                       return Padding(
+                        key: key,
                         padding: EdgeInsets.only(bottom: 14 * s),
                         child: Container(
                           padding: EdgeInsets.all(16 * s),
@@ -178,7 +209,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                item['kit'],
+                                item['kit'] as String,
                                 style: TextStyle(
                                   color: _primary,
                                   fontSize: 16 * s,
@@ -187,7 +218,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                               ),
                               SizedBox(height: 6 * s),
                               Text(
-                                item['id'],
+                                item['id'] as String,
                                 style: TextStyle(
                                   fontSize: 14 * s,
                                   color: Colors.black87,
@@ -245,7 +276,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         ),
       ),
 
-      // Floating button (bottom right)
+      // ===== FAB Placeholder =====
       floatingActionButton: FloatingActionButton(
         backgroundColor: _primary,
         onPressed: () {
@@ -259,5 +290,109 @@ class _HistoryScreenState extends State<HistoryScreen> {
         child: const Icon(Icons.add, color: Colors.white),
       ),
     );
+  }
+
+  /// Generate history dummy dari providers:
+  /// - Entry khusus di timestamp notifikasi agar nilai sensor "menjelaskan" notif.
+  /// - Tambah snapshot sebelum/sesudah agar timeline terasa alami.
+  List<Map<String, dynamic>> _buildHistoryFromProviders(
+    List<Kit> kits,
+    List<NotificationItem> notifs,
+  ) {
+    final List<Map<String, dynamic>> items = [];
+
+    Map<String, dynamic> _baselineForKit(Kit? k) => {
+      'kit': k?.name ?? 'Unknown Kit',
+      'id': k?.id ?? 'UNKNOWN-ID',
+      'ph': (k?.ph ?? 6.7).toStringAsFixed(1),
+      'ppm': (k?.ppm ?? 300).round(),
+      'humidity': (k?.humidity ?? 75).round(),
+      'temperature': (k?.temperature ?? 28).round(),
+    };
+
+    Kit _fallback() => Kit(
+      id: 'SUF-UINJKT-HM-F2000',
+      name: 'Hydroponic System',
+      ph: 6.7,
+      ppm: 300,
+      humidity: 75,
+      temperature: 28,
+    );
+
+    Kit _findKitByName(String? name) {
+      if (name == null) return kits.isNotEmpty ? kits.first : _fallback();
+      for (final k in kits) {
+        if (k.name == name) return k;
+      }
+      return kits.isNotEmpty ? kits.first : _fallback();
+    }
+
+    for (final n in notifs) {
+      final kit = _findKitByName(n.kitName);
+      final base = _baselineForKit(kit);
+
+      // Sesuaikan nilai agar match pesan notifikasi
+      final msg = n.message.toLowerCase();
+      if (n.level == 'urgent' && msg.contains('tds reached 850')) {
+        base['ppm'] = 850;
+      }
+      if (n.level == 'warning' && msg.contains('ph dropped to 5.8')) {
+        base['ph'] = 5.8.toStringAsFixed(1);
+      }
+      if (n.level == 'warning' && msg.contains('ppm dropped to 100')) {
+        base['ppm'] = 100;
+      }
+
+      items.add({'date': n.timestamp, ...base});
+      items.add({
+        'date': n.timestamp.subtract(const Duration(minutes: 20)),
+        ..._baselineForKit(kit),
+      });
+      items.add({
+        'date': n.timestamp.add(const Duration(minutes: 15)),
+        ..._baselineForKit(kit),
+      });
+    }
+
+    if (items.isEmpty) {
+      final k = kits.isNotEmpty ? kits.first : _fallback();
+      final base = _baselineForKit(k);
+      items.add({
+        'date': DateTime.now().subtract(const Duration(hours: 3)),
+        ...base,
+      });
+      items.add({
+        'date': DateTime.now().subtract(const Duration(hours: 1)),
+        ...base,
+      });
+    }
+
+    return items;
+  }
+
+  /// Loncat ke item dengan timestamp paling dekat ke [target]
+  void _jumpToTarget(DateTime target, List<Map<String, dynamic>> filtered) {
+    int? keyTs;
+    Duration best = const Duration(days: 9999);
+
+    for (final it in filtered) {
+      final ts = (it['date'] as DateTime).millisecondsSinceEpoch;
+      final diff = (it['date'] as DateTime).difference(target).abs();
+      if (diff < best) {
+        best = diff;
+        keyTs = ts;
+      }
+    }
+    if (keyTs == null) return;
+
+    final ctx = _itemKeys[keyTs]?.currentContext;
+    if (ctx != null) {
+      Scrollable.ensureVisible(
+        ctx,
+        alignment: 0.1,
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeOut,
+      );
+    }
   }
 }
