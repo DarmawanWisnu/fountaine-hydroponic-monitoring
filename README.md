@@ -20,6 +20,11 @@
 | mqtt_client | ^10.11.1 |
 | shared_preferences | ^2.5.3 |
 | fl_chart | ^1.1.1 |
+| flutter_riverpod | ^2.3.6 |
+| intl | ^0.19.0 |
+| url_launcher | ^6.3.0 |
+| flutter_dotenv | ^6.0.0 |
+| firebase_app_check | ^0.4.0+1 |
 
 ---
 
