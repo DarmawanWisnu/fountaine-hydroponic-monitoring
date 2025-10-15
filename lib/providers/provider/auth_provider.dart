@@ -1,92 +1,75 @@
-// lib/providers/auth_provider.dart
-import 'dart:convert';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+// Riverpod providers untuk Firebase Auth:
+// - firebaseAuthProvider        : instance FirebaseAuth
+// - authServiceProvider         : wrapper AuthService
+// - authStateProvider (Stream)  : stream User? (buat AuthGate)
+// - authProvider (StateNotifier): expose method signIn/register/signOut dll
 
-final authProvider = StateNotifierProvider<AuthNotifier, User?>((ref) {
-  return AuthNotifier();
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:fountaine/services/auth_services.dart';
+
+// Instance FirebaseAuth global
+final firebaseAuthProvider = Provider<FirebaseAuth>((ref) {
+  return FirebaseAuth.instance;
 });
 
-class User {
-  final String name;
-  final String email;
-  final String password;
-  final String location;
+// Service pembungkus FirebaseAuth
+final authServiceProvider = Provider<AuthService>((ref) {
+  final auth = ref.read(firebaseAuthProvider);
+  return AuthService(auth);
+});
 
-  User({
-    required this.name,
-    required this.email,
-    required this.password,
-    required this.location,
-  });
+// Stream User? untuk AuthGate
+final authStateProvider = StreamProvider<User?>((ref) {
+  final service = ref.read(authServiceProvider);
+  return service.authStateChanges();
+});
 
-  Map<String, dynamic> toJson() => {
-    'name': name,
-    'email': email,
-    'password': password,
-    'location': location,
-  };
-
-  static User fromJson(Map<String, dynamic> j) => User(
-    name: j['name'],
-    email: j['email'],
-    password: j['password'],
-    location: j['location'],
-  );
-}
+// -------------------- StateNotifier --------------------
 
 class AuthNotifier extends StateNotifier<User?> {
-  AuthNotifier() : super(null) {
-    _load();
+  final AuthService _service;
+  late final Stream<User?> _sub;
+
+  AuthNotifier(this._service) : super(_service.currentUser) {
+    // Sinkronkan state dengan authStateChanges supaya real-time
+    _sub = _service.authStateChanges();
+    // ignore: cancel_subscriptions
+    _sub.listen((u) => state = u);
   }
 
-  Future<void> _load() async {
-    final sp = await SharedPreferences.getInstance();
-    final data = sp.getString('user');
-    if (data != null) {
-      final map = jsonDecode(data) as Map<String, dynamic>;
-      state = User.fromJson(map);
-    }
+  Future<void> signIn({required String email, required String password}) async {
+    await _service.signInWithEmailPassword(email, password);
+    state = _service.currentUser; // update state setelah login
   }
 
-  /// Simulasi REGISTER — nyimpen data dummy user ke SharedPreferences
   Future<void> register({
-    required String name,
     required String email,
     required String password,
-    required String location,
   }) async {
-    final user = User(
-      name: name,
-      email: email,
-      password: password,
-      location: location,
-    );
-
-    final sp = await SharedPreferences.getInstance();
-    await sp.setString('user', jsonEncode(user.toJson()));
-    state = user;
+    await _service.registerWithEmailPassword(email, password);
+    await _service.sendEmailVerification();
+    state = _service.currentUser;
   }
 
-  /// Simulasi LOGIN — validasi dari data dummy di SharedPreferences
-  Future<void> signIn({required String email, required String password}) async {
-    final sp = await SharedPreferences.getInstance();
-    final data = sp.getString('user');
-    if (data == null) throw Exception('User belum terdaftar');
-
-    final saved = User.fromJson(jsonDecode(data));
-
-    if (saved.email != email || saved.password != password) {
-      throw Exception('Email atau password salah');
-    }
-
-    state = saved;
-  }
-
-  /// LOGOUT — hapus data user dummy
-  Future<void> logout() async {
-    final sp = await SharedPreferences.getInstance();
-    await sp.remove('user');
+  Future<void> signOut() async {
+    await _service.signOut();
     state = null;
   }
+
+  Future<void> sendPasswordReset(String email) =>
+      _service.sendPasswordReset(email);
+
+  Future<void> sendEmailVerification() => _service.sendEmailVerification();
+
+  Future<void> reloadUser() async {
+    await _service.reloadUser();
+    state = _service.currentUser;
+  }
 }
+
+// Provider StateNotifier: inilah yang dipakai oleh UI (notifier + state User?)
+final authProvider = StateNotifierProvider<AuthNotifier, User?>((ref) {
+  final service = ref.read(authServiceProvider);
+  return AuthNotifier(service);
+});

@@ -1,6 +1,13 @@
 // lib/screens/auth/register_screen.dart
+// Register Screen gabungan: UI fancy + validator + Riverpod AuthNotifier.
+// - Field: name, email, password, location (sesuai desainmu)
+// - Logic: ref.read(authProvider.notifier).register(email, password)
+// - Setelah sukses: push ke VerifyScreen
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+// Sesuaikan path dengan project-mu
 import 'package:fountaine/app/routes.dart';
 import 'package:fountaine/utils/validators.dart';
 import 'package:fountaine/providers/provider/auth_provider.dart';
@@ -16,6 +23,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _emailCtrl = TextEditingController();
   final _pwCtrl = TextEditingController();
   final _locationCtrl = TextEditingController();
+
   final _formKey = GlobalKey<FormState>();
   bool _loading = false;
   bool _obscure = true; // toggle lihat/tutup password
@@ -49,18 +57,19 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     final location = _locationCtrl.text.trim();
 
     setState(() => _loading = true);
-    await Future.delayed(
-      const Duration(milliseconds: 400),
-    ); // simulasi jaringan
-
     try {
-      await ref
-          .read(authProvider.notifier)
-          .register(name: name, email: email, password: pw, location: location);
+      // NOTE:
+      // AuthNotifier kita sebelumnya: register({required email, required password})
+      // Name & location kamu bisa disimpan ke Firestore setelah ini (TODO).
+      final auth = ref.read(authProvider.notifier);
+      await auth.register(email: email, password: pw);
 
       if (!mounted) return;
+
+      // Jika AuthNotifier.register sudah otomatis kirim verifikasi (iya),
+      // langsung bawa user ke halaman Verify.
       Navigator.pushReplacementNamed(context, Routes.verify);
-    } catch (e) {
+    } on Exception catch (e) {
       _show('Gagal', e.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -90,7 +99,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Back button
+                // === Back button ===
                 Align(
                   alignment: Alignment.centerLeft,
                   child: CircleAvatar(
@@ -109,7 +118,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
                 SizedBox(height: 24 * s),
 
-                // Title
+                // === Title ===
                 Text(
                   'Create Account',
                   style: TextStyle(
@@ -128,7 +137,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
                 SizedBox(height: 28 * s),
 
-                // Name
+                // === Name ===
                 Text(
                   'Your Name',
                   style: TextStyle(
@@ -148,7 +157,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
                 SizedBox(height: 18 * s),
 
-                // Email
+                // === Email ===
                 Text(
                   'Email Address',
                   style: TextStyle(
@@ -167,7 +176,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
                 SizedBox(height: 18 * s),
 
-                // Password (dengan icon mata)
+                // === Password (dengan icon mata) ===
                 Text(
                   'Password',
                   style: TextStyle(
@@ -217,7 +226,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
                 SizedBox(height: 18 * s),
 
-                // Location
+                // === Location ===
                 Text(
                   'Location',
                   style: TextStyle(
@@ -264,7 +273,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
                 SizedBox(height: 22 * s),
 
-                // Sign Up button
+                // === Sign Up button ===
                 SizedBox(
                   height: 56 * s,
                   child: ElevatedButton(
@@ -290,7 +299,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
                 SizedBox(height: 16 * s),
 
-                // Google Sign-in (dummy)
+                // === Google Sign-in (placeholder) ===
                 SizedBox(
                   height: 56 * s,
                   child: OutlinedButton(
@@ -302,7 +311,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(40 * s),
                       ),
-                      side: BorderSide(color: Colors.transparent),
+                      side: const BorderSide(color: Colors.transparent),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -334,7 +343,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     );
   }
 
-  // helper field widget
+  // Helper field bulat bersih
   Widget _roundedField({
     required TextEditingController controller,
     required String hint,

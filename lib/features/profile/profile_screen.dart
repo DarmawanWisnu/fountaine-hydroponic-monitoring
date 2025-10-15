@@ -1,6 +1,8 @@
 // lib/screens/profile/profile_screen.dart
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import 'package:fountaine/app/routes.dart';
 import 'package:fountaine/providers/provider/auth_provider.dart';
 import 'package:fountaine/providers/provider/kit_provider.dart';
@@ -14,48 +16,45 @@ class ProfileScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final user = ref.watch(authProvider); // User? (bisa null)
+    // Ambil user Firebase dari authProvider (User? dari StateNotifier)
+    final user = ref.watch(authProvider); // User? (null kalau belum login)
+
+    // Ambil daftar kit dari provider milikmu
     final kits = ref.watch(kitListProvider); // List<Kit>
 
-    // fallback jika belum ada user
-    final name = user?.name ?? 'Profile';
-    final email = user?.email ?? 'user@example.com';
+    // --- Mapping field Firebase User ---
+    final email = user?.email ?? '-';
+    final uid = user?.uid ?? '-';
+    final inferredName =
+        (user?.displayName != null && user!.displayName!.trim().isNotEmpty)
+        ? user.displayName!.trim()
+        : (email != '-' ? email.split('@').first : 'Profile');
+    final name = inferredName;
+
+    // --- Ambil kit info kalau ada ---
     final kitName = kits.isNotEmpty ? kits.first.name : 'Your Kit Name';
     final kitId = kits.isNotEmpty ? kits.first.id : 'SUF-XXXX-XXXX';
 
     final s = MediaQuery.of(context).size.width / 375.0;
 
+    // Optional: tombol debug untuk seed kit dummy saat develop
     Future<void> seedDummy() async {
-      // fungsi debug untuk menambahkan data dummy langsung dari UI
+      if (!kDebugMode) return; // hanya aktif di debug
       try {
-        // hanya register jika belum ada user
-        if (user == null) {
-          await ref
-              .read(authProvider.notifier)
-              .register(
-                name: 'Wisnu Darmawan',
-                email: 'aizen.emu@gmail.com',
-                password: 'password123',
-                location: 'Tangerang, Banten',
-              );
-        }
-
-        // tambahkan kit dummy jika belum ada
         if (kits.isEmpty) {
           await ref
               .read(kitListProvider.notifier)
               .addKit(
                 Kit(
                   id: 'SUF-UINJKT-HM-F2000',
-                  name: 'Hydrophonic Monitoring System',
+                  name: 'Hydroponic Monitoring System',
                 ),
               );
         }
-
         if (context.mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('Dummy data seeded ✅')));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Dummy kit ditambahkan ✅')),
+          );
         }
       } catch (e) {
         if (context.mounted) {
@@ -74,7 +73,7 @@ class ProfileScreen extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header
+              // ===== Header =====
               Row(
                 children: [
                   CircleAvatar(
@@ -108,7 +107,7 @@ class ProfileScreen extends ConsumerWidget {
 
               SizedBox(height: 32 * s),
 
-              // Avatar
+              // ===== Avatar =====
               Center(
                 child: CircleAvatar(
                   radius: 48 * s,
@@ -119,6 +118,7 @@ class ProfileScreen extends ConsumerWidget {
 
               SizedBox(height: 12 * s),
 
+              // ===== Nama User =====
               Center(
                 child: Text(
                   name,
@@ -132,7 +132,7 @@ class ProfileScreen extends ConsumerWidget {
 
               SizedBox(height: 24 * s),
 
-              // Info Card
+              // ===== Info Card =====
               Container(
                 width: double.infinity,
                 padding: EdgeInsets.all(20 * s),
@@ -143,7 +143,9 @@ class ProfileScreen extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _infoRow('User ID', email, s),
+                    _infoRow('User ID', uid, s),
+                    Divider(height: 22 * s, thickness: 0.8, color: _bg),
+                    _infoRow('Email', email, s),
                     Divider(height: 22 * s, thickness: 0.8, color: _bg),
                     _infoRow('Kit Name', kitName, s),
                     Divider(height: 22 * s, thickness: 0.8, color: _bg),
@@ -154,18 +156,13 @@ class ProfileScreen extends ConsumerWidget {
 
               const Spacer(),
 
-              // Edit Profile
+              // ===== Edit Profile (sementara arahkan ke Settings) =====
               SizedBox(
                 width: double.infinity,
                 height: 52 * s,
                 child: ElevatedButton(
-                  onPressed: () {
-                    // jika mau, bisa arahkan ke screen edit (belum dibuat)
-                    Navigator.pushNamed(
-                      context,
-                      Routes.settings,
-                    ); // placeholder
-                  },
+                  onPressed: () =>
+                      Navigator.pushNamed(context, Routes.settings),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _primary,
                     shape: RoundedRectangleBorder(
@@ -184,16 +181,20 @@ class ProfileScreen extends ConsumerWidget {
 
               SizedBox(height: 12 * s),
 
-              // Logout button
+              // ===== Logout =====
               Center(
                 child: OutlinedButton(
-                  onPressed: () {
-                    ref.read(authProvider.notifier).logout();
-                    Navigator.pushNamedAndRemoveUntil(
-                      context,
-                      Routes.login,
-                      (r) => false,
-                    );
+                  onPressed: () async {
+                    await ref
+                        .read(authProvider.notifier)
+                        .signOut(); // <-- BENER: signOut()
+                    if (context.mounted) {
+                      Navigator.pushNamedAndRemoveUntil(
+                        context,
+                        Routes.login,
+                        (r) => false,
+                      );
+                    }
                   },
                   style: OutlinedButton.styleFrom(
                     backgroundColor: Colors.white,
@@ -219,16 +220,17 @@ class ProfileScreen extends ConsumerWidget {
 
               const SizedBox(height: 10),
 
-              // debug seed button (kecil, cuma buat testing)
-              Center(
-                child: TextButton(
-                  onPressed: seedDummy,
-                  child: const Text(
-                    'Seed dummy data (debug)',
-                    style: TextStyle(decoration: TextDecoration.underline),
+              // ===== Debug: seed dummy kit (aktif cuma di debug mode) =====
+              if (kDebugMode)
+                Center(
+                  child: TextButton(
+                    onPressed: seedDummy,
+                    child: const Text(
+                      'Seed dummy kit (debug)',
+                      style: TextStyle(decoration: TextDecoration.underline),
+                    ),
                   ),
                 ),
-              ),
 
               SizedBox(height: 8 * s),
             ],

@@ -1,9 +1,17 @@
+// - Tampilkan email user aktif
+// - Kirim ulang email verifikasi via authProvider.notifier.sendEmailVerification()
+// - Muat ulang status via authProvider.notifier.reloadUser() -> kalau verified, ke Home
+// - Logout via authProvider.notifier.signOut()
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:fountaine/app/routes.dart';
 
-class VerifyScreen extends StatefulWidget {
+import 'package:fountaine/app/routes.dart';
+import 'package:fountaine/providers/provider/auth_provider.dart';
+
+class VerifyScreen extends ConsumerStatefulWidget {
   const VerifyScreen({super.key});
 
   static const Color _bg = Color(0xFFF6FBF6);
@@ -11,36 +19,12 @@ class VerifyScreen extends StatefulWidget {
   static const Color _muted = Color(0xFF555555);
 
   @override
-  State<VerifyScreen> createState() => _VerifyScreenState();
+  ConsumerState<VerifyScreen> createState() => _VerifyScreenState();
 }
 
-class _VerifyScreenState extends State<VerifyScreen> {
-  final String dummyEmail = 'aizen.emu@gmail.com';
-  final String dummyVerifyLink =
-      'https://skripsi-wisnu.firebaseapp.com/__/auth/action?mode=verifyEmail&oobCode=06Oy62fw4rCEoolpeC4rIMoVfiVfGZE0sExVNt-siBLAAAAGZeinfjA&apiKey=AlzaSyBhmdAmWirVhs8Btw_UTZDUuLgZl2CDUII&lang=en';
-
-  bool _showFullLink = false;
-  bool _isLaunching = false;
-
-  Future<void> _launchEmailLink(String url) async {
-    setState(() => _isLaunching = true);
-    final uri = Uri.parse(url);
-    try {
-      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-      if (!ok) {
-        _showSnack('Gagal membuka link. Coba salin link dulu.');
-      }
-    } catch (e) {
-      _showSnack('Gagal membuka link. Error: $e');
-    } finally {
-      if (mounted) setState(() => _isLaunching = false);
-    }
-  }
-
-  void _copyToClipboard(String text) {
-    Clipboard.setData(ClipboardData(text: text));
-    _showSnack('Link disalin ke clipboard');
-  }
+class _VerifyScreenState extends ConsumerState<VerifyScreen> {
+  bool _isWorking = false; // loading untuk aksi kirim ulang / refresh
+  bool _showTips = false; // toggle tips area
 
   void _showSnack(String message) {
     ScaffoldMessenger.of(
@@ -48,14 +32,71 @@ class _VerifyScreenState extends State<VerifyScreen> {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  String _shorten(String url) {
-    if (_showFullLink || url.length <= 80) return url;
-    return '${url.substring(0, 72)}...';
+  Future<void> _openMailApp() async {
+    // buka webmail (gmail).
+    final uri = Uri.parse('https://mail.google.com/');
+    try {
+      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!ok) _showSnack('Gagal membuka email. Coba buka manual ya.');
+    } catch (e) {
+      _showSnack('Gagal membuka email. Error: $e');
+    }
+  }
+
+  Future<void> _copyEmail(String email) async {
+    await Clipboard.setData(ClipboardData(text: email));
+    _showSnack('Email disalin ke clipboard');
+  }
+
+  Future<void> _resend() async {
+    setState(() => _isWorking = true);
+    try {
+      await ref.read(authProvider.notifier).sendEmailVerification();
+      _showSnack('Email verifikasi dikirim ulang. Cek inbox/spam ya.');
+    } catch (e) {
+      _showSnack('Gagal kirim verifikasi: $e');
+    } finally {
+      if (mounted) setState(() => _isWorking = false);
+    }
+  }
+
+  Future<void> _refresh() async {
+    setState(() => _isWorking = true);
+    try {
+      await ref.read(authProvider.notifier).reloadUser();
+      final user = ref.read(authProvider);
+      if (user != null && user.emailVerified) {
+        if (!mounted) return;
+        _showSnack('Verifikasi terdeteksi. Selamat!');
+        Navigator.pushReplacementNamed(context, Routes.home);
+        return;
+      }
+      _showSnack('Belum terverifikasi. Coba lagi beberapa detik nanti.');
+    } catch (e) {
+      _showSnack('Gagal memuat status: $e');
+    } finally {
+      if (mounted) setState(() => _isWorking = false);
+    }
+  }
+
+  Future<void> _logout() async {
+    setState(() => _isWorking = true);
+    try {
+      await ref.read(authProvider.notifier).signOut();
+      if (!mounted) return;
+      Navigator.pushReplacementNamed(context, Routes.login);
+    } catch (e) {
+      _showSnack('Gagal keluar: $e');
+    } finally {
+      if (mounted) setState(() => _isWorking = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final s = MediaQuery.of(context).size.width / 375.0;
+    final user = ref.watch(authProvider); // User? dari StateNotifier
+    final email = user?.email ?? '—';
 
     return Scaffold(
       backgroundColor: VerifyScreen._bg,
@@ -65,7 +106,7 @@ class _VerifyScreenState extends State<VerifyScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Header: back button
+              // Header: back & logout
               Row(
                 children: [
                   Material(
@@ -86,6 +127,11 @@ class _VerifyScreenState extends State<VerifyScreen> {
                     ),
                   ),
                   const Spacer(),
+                  TextButton.icon(
+                    onPressed: _isWorking ? null : _logout,
+                    icon: const Icon(Icons.logout),
+                    label: const Text('Keluar'),
+                  ),
                 ],
               ),
 
@@ -124,10 +170,10 @@ class _VerifyScreenState extends State<VerifyScreen> {
                       ),
                     ),
                     SizedBox(width: 12 * s),
-                    Expanded(
+                    const Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
+                        children: [
                           Text(
                             'Fountaine',
                             style: TextStyle(
@@ -164,13 +210,13 @@ class _VerifyScreenState extends State<VerifyScreen> {
                   ),
                 ),
               ),
-
               const SizedBox(height: 10),
 
-              // Description
+              // Description + user email
               Center(
                 child: Text(
-                  'Thank you for signing up. Please verify your email address, $dummyEmail, by clicking the button below.',
+                  'Terima kasih sudah mendaftar.\n'
+                  'Silakan verifikasi alamat email berikut:\n$email',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 14 * s,
@@ -180,15 +226,34 @@ class _VerifyScreenState extends State<VerifyScreen> {
                 ),
               ),
 
+              const SizedBox(height: 12),
+
+              // Action chips
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 10,
+                children: [
+                  ActionChip(
+                    avatar: const Icon(Icons.copy, size: 18),
+                    label: const Text('Salin Email'),
+                    onPressed: email == '—' ? null : () => _copyEmail(email),
+                  ),
+                  ActionChip(
+                    avatar: const Icon(Icons.mail_outline, size: 18),
+                    label: const Text('Buka Email'),
+                    onPressed: _isWorking ? null : _openMailApp,
+                  ),
+                ],
+              ),
+
               const SizedBox(height: 24),
 
-              // Verify button
+              // Tombol utama: Kirim Ulang & Muat Ulang
               SizedBox(
                 height: 52 * s,
-                child: ElevatedButton(
-                  onPressed: _isLaunching
-                      ? null
-                      : () => _launchEmailLink(dummyVerifyLink),
+                child: ElevatedButton.icon(
+                  onPressed: _isWorking ? null : _resend,
+                  icon: const Icon(Icons.send_outlined, size: 18),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: VerifyScreen._primary,
                     shape: RoundedRectangleBorder(
@@ -196,8 +261,8 @@ class _VerifyScreenState extends State<VerifyScreen> {
                     ),
                     elevation: 6,
                   ),
-                  child: _isLaunching
-                      ? SizedBox(
+                  label: _isWorking
+                      ? const SizedBox(
                           width: 22,
                           height: 22,
                           child: CircularProgressIndicator(
@@ -205,27 +270,28 @@ class _VerifyScreenState extends State<VerifyScreen> {
                             valueColor: AlwaysStoppedAnimation(Colors.white),
                           ),
                         )
-                      : Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.check_circle_outline, size: 18),
-                            SizedBox(width: 10 * s),
-                            Text(
-                              'Verify your email',
-                              style: TextStyle(
-                                fontSize: 16 * s,
-                                fontWeight: FontWeight.w700,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ],
+                      : Text(
+                          'Kirim Ulang Email Verifikasi',
+                          style: TextStyle(
+                            fontSize: 16 * s,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
                         ),
                 ),
               ),
 
-              const SizedBox(height: 20),
+              const SizedBox(height: 12),
 
-              // Link box
+              OutlinedButton.icon(
+                onPressed: _isWorking ? null : _refresh,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Muat Ulang Status'),
+              ),
+
+              const SizedBox(height: 16),
+
+              // Tips expandable
               Card(
                 elevation: 2,
                 shape: RoundedRectangleBorder(
@@ -237,126 +303,53 @@ class _VerifyScreenState extends State<VerifyScreen> {
                     vertical: 12 * s,
                   ),
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: SelectableText(
-                              _shorten(dummyVerifyLink),
-                              style: TextStyle(
-                                fontSize: 13 * s,
-                                color: Colors.blue[800],
-                                decoration: TextDecoration.underline,
-                              ),
-                              maxLines: _showFullLink ? null : 2,
-                              onTap: () => _launchEmailLink(dummyVerifyLink),
+                      InkWell(
+                        onTap: () => setState(() => _showTips = !_showTips),
+                        child: Row(
+                          children: [
+                            Icon(
+                              _showTips ? Icons.expand_less : Icons.expand_more,
+                              color: VerifyScreen._muted,
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          Column(
-                            children: [
-                              IconButton(
-                                onPressed: () =>
-                                    _copyToClipboard(dummyVerifyLink),
-                                icon: Icon(
-                                  Icons.copy,
-                                  size: 20 * s,
-                                  color: VerifyScreen._muted,
-                                ),
-                                tooltip: 'Salin link',
-                              ),
-                              IconButton(
-                                onPressed: () => setState(
-                                  () => _showFullLink = !_showFullLink,
-                                ),
-                                icon: Icon(
-                                  _showFullLink
-                                      ? Icons.expand_less
-                                      : Icons.expand_more,
-                                  size: 20 * s,
-                                  color: VerifyScreen._muted,
-                                ),
-                                tooltip: _showFullLink
-                                    ? 'Sembunyikan'
-                                    : 'Tampilkan penuh',
-                              ),
-                            ],
-                          ),
-                        ],
+                            const SizedBox(width: 8),
+                            const Text(
+                              'Butuh bantuan?',
+                              style: TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
                       ),
-                      const SizedBox(height: 6),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          'Follow this link to verify your email address.',
+                      if (_showTips) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          '• Cek folder Spam/Promotions.\n'
+                          '• Tunggu 1–2 menit lalu tekan "Muat Ulang Status".\n'
+                          '• Pastikan email benar.\n'
+                          '• Coba "Kirim Ulang Email Verifikasi".',
                           style: TextStyle(
-                            fontSize: 12 * s,
+                            fontSize: 13 * s,
                             color: VerifyScreen._muted,
                           ),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ),
               ),
 
-              const SizedBox(height: 18),
-
-              // Support text
-              Center(
-                child: Text(
-                  'If you are having any issues with your account, please don’t hesitate to contact Customer Services.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 13 * s,
-                    color: VerifyScreen._muted,
-                    height: 1.4,
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              // Footer signature
-              Center(
-                child: Column(
-                  children: [
-                    Text(
-                      'Thanks!',
-                      style: TextStyle(
-                        fontSize: 15 * s,
-                        fontWeight: FontWeight.w600,
-                        color: VerifyScreen._muted,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Fountaine',
-                      style: TextStyle(
-                        fontSize: 16 * s,
-                        fontWeight: FontWeight.w800,
-                        color: VerifyScreen._primary,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Your Fountaine-app team',
-                      style: TextStyle(
-                        fontSize: 13 * s,
-                        color: VerifyScreen._muted,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
               const Spacer(),
 
-              // Back to login
+              // Back to Login
               Center(
                 child: TextButton(
-                  onPressed: () =>
-                      Navigator.pushReplacementNamed(context, Routes.login),
+                  onPressed: _isWorking
+                      ? null
+                      : () => Navigator.pushReplacementNamed(
+                          context,
+                          Routes.login,
+                        ),
                   child: Text(
                     'Back to Login',
                     style: TextStyle(

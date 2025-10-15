@@ -1,4 +1,3 @@
-// lib/providers/auth/auth_user.dart
 class AuthUser {
   final String uid;
   final String? email;

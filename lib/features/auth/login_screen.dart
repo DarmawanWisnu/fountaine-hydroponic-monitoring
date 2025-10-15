@@ -13,28 +13,41 @@ class LoginScreen extends ConsumerStatefulWidget {
 }
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
+  // --- Controller input ---
   final _emailCtrl = TextEditingController();
   final _pwCtrl = TextEditingController();
-  final _formKey = GlobalKey<FormState>();
-  bool _loading = false;
-  bool _obscure = true; // <-- toggle state
 
+  // --- Form key untuk validasi ---
+  final _formKey = GlobalKey<FormState>();
+
+  // --- State UI ---
+  bool _loading = false; // disable tombol saat submit
+  bool _obscure = true; // toggle visibilitas password
+
+  // --- Palet warna ---
   static const Color _bgColor = Color(0xFFF6FBF6);
   static const Color _primaryColor = Color(0xFF154B2E);
   static const Color _mutedText = Color(0xFF6B6B6B);
 
+  // Submit: validasi -> panggil AuthProvider -> ke Home
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _loading = true);
+
     final email = _emailCtrl.text.trim();
     final pass = _pwCtrl.text;
 
     try {
+      // Pakai notifier dari authProvider
       final auth = ref.read(authProvider.notifier);
       await auth.signIn(email: email, password: pass);
+
       if (!mounted) return;
+
+      // Sukses login -> ke Home.
       Navigator.pushReplacementNamed(context, Routes.home);
     } catch (e) {
+      // Error singkat
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(e.toString())));
@@ -53,16 +66,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      // Latar belakang sesuai tema
       backgroundColor: _bgColor,
+
+      // SafeArea + scroll agar aman saat keyboard muncul
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 36),
+
+          // Form dengan validator
           child: Form(
             key: _formKey,
+
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Back button
+                // ===== Tombol Back =====
                 Align(
                   alignment: Alignment.centerLeft,
                   child: CircleAvatar(
@@ -77,7 +96,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                 const SizedBox(height: 32),
 
-                // Title
+                // ===== Judul Halaman =====
                 const Text(
                   'Hello Again!',
                   textAlign: TextAlign.center,
@@ -96,6 +115,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                 const SizedBox(height: 36),
 
+                // ===== Label Email =====
                 const Text(
                   'Email Address',
                   style: TextStyle(
@@ -106,6 +126,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
                 const SizedBox(height: 8),
 
+                // ===== Field Email + Validator =====
                 Container(
                   decoration: BoxDecoration(
                     color: Colors.white,
@@ -123,11 +144,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ),
                     ),
                     validator: (v) => Validators.email(v),
+                    onFieldSubmitted: (_) => _loading ? null : _submit(),
                   ),
                 ),
 
                 const SizedBox(height: 20),
 
+                // ===== Label Password =====
                 const Text(
                   'Password',
                   style: TextStyle(
@@ -138,7 +161,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
                 const SizedBox(height: 8),
 
-                // Password field with toggle eye
+                // ===== Field Password + Toggle Eye + Validator =====
                 Container(
                   decoration: BoxDecoration(
                     color: Colors.white,
@@ -159,9 +182,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             ),
                           ),
                           validator: (v) => Validators.password(v),
+                          onFieldSubmitted: (_) => _loading ? null : _submit(),
                         ),
                       ),
-                      // icon button yang toggle obscureText
+                      // Icon toggle show/hide password
                       Padding(
                         padding: const EdgeInsets.only(right: 8),
                         child: IconButton(
@@ -179,6 +203,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
 
                 const SizedBox(height: 8),
+
+                // ===== Link Lupa Password =====
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(
@@ -193,7 +219,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                 const SizedBox(height: 24),
 
-                // ===== Fancy Sign In (hover + press) =====
+                // ===== Tombol Sign In dengan animasi hover/press =====
                 _HoverScaleButton(
                   height: 56,
                   radius: 40,
@@ -201,19 +227,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   shadowColor: const Color(0x33154B2E), // soft green shadow
                   pressedScale: 0.985,
                   onPressed: _loading ? null : _submit,
-                  child: const Text(
-                    'Sign In',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                    ),
-                  ),
+                  child: _loading
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text(
+                          'Sign In',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
                 ),
 
                 const SizedBox(height: 16),
 
-                // ===== Fancy Google (white pill + shadow) =====
+                // ===== Tombol Google =====
                 _HoverScaleButton(
                   height: 56,
                   radius: 40,
@@ -224,6 +256,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
+                      // Pastikan asset ini ada di pubspec.yaml
                       Image.asset('assets/images/google_logo.png', height: 20),
                       const SizedBox(width: 10),
                       const Text(
@@ -237,13 +270,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ],
                   ),
                   onPressed: () {
-                    // TODO: Google Sign-In
+                    // TODO: Implement Google Sign-In (google_sign_in + FirebaseAuth credential)
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Google Sign-In belum diimplementasi'),
+                      ),
+                    );
                   },
                 ),
 
                 const SizedBox(height: 28),
 
-                // Footer
+                // ===== Footer ke Register =====
                 Center(
                   child: RichText(
                     text: TextSpan(
@@ -275,7 +313,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 }
 
-/// Reusable button with hover (web/desktop) + press (mobile) animation + shadow.
+/// Reusable button: animasi hover (web/desktop) + press (mobile) + shadow.
+/// Dipakai untuk tombol Sign In & Google agar konsisten dan enak dilihat.
 class _HoverScaleButton extends StatefulWidget {
   final Widget child;
   final VoidCallback? onPressed;
@@ -285,6 +324,7 @@ class _HoverScaleButton extends StatefulWidget {
   final Color? borderColor;
   final Color shadowColor;
   final double pressedScale;
+
   const _HoverScaleButton({
     required this.child,
     required this.onPressed,

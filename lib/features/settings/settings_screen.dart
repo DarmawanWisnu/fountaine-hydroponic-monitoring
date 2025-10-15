@@ -1,8 +1,9 @@
 // lib/screens/settings/settings_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import 'package:fountaine/app/routes.dart';
-import '../../providers/provider/auth_provider.dart';
+import 'package:fountaine/providers/provider/auth_provider.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -27,15 +28,18 @@ class SettingsScreen extends ConsumerWidget {
             onPressed: () async {
               Navigator.pop(context); // close dialog first
               try {
-                await ref.read(authProvider.notifier).logout();
-              } catch (e) {
-                // ignore errors so app won't crash if something weird
+                // FIX: pakai signOut() beneran dari authProvider.notifier
+                await ref.read(authProvider.notifier).signOut();
+              } catch (_) {
+                // jangan bikin app crash kalau ada error aneh
               }
-              Navigator.pushNamedAndRemoveUntil(
-                context,
-                Routes.login,
-                (r) => false,
-              );
+              if (context.mounted) {
+                Navigator.pushNamedAndRemoveUntil(
+                  context,
+                  Routes.login,
+                  (r) => false,
+                );
+              }
             },
             child: const Text('Logout'),
           ),
@@ -125,6 +129,13 @@ class SettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = MediaQuery.of(context).size.width / 375.0;
+    final user = ref.watch(authProvider); // User? dari Firebase
+
+    final email = user?.email ?? '—';
+    final name =
+        (user?.displayName != null && user!.displayName!.trim().isNotEmpty)
+        ? user.displayName!.trim()
+        : (email != '—' ? email.split('@').first : 'User');
 
     return Scaffold(
       backgroundColor: _bg,
@@ -166,6 +177,57 @@ class SettingsScreen extends ConsumerWidget {
                 ],
               ),
 
+              SizedBox(height: 20 * s),
+
+              // Account Header (tampilkan user yang login)
+              Container(
+                padding: EdgeInsets.all(16 * s),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14 * s),
+                ),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 24 * s,
+                      backgroundColor: _primary,
+                      child: Icon(
+                        Icons.person,
+                        color: Colors.white,
+                        size: 24 * s,
+                      ),
+                    ),
+                    SizedBox(width: 12 * s),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            name,
+                            style: TextStyle(
+                              fontSize: 16 * s,
+                              fontWeight: FontWeight.w700,
+                              color: _primary,
+                            ),
+                          ),
+                          SizedBox(height: 2 * s),
+                          Text(
+                            email,
+                            style: TextStyle(fontSize: 13 * s, color: _muted),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () =>
+                          Navigator.pushNamed(context, Routes.profile),
+                      child: const Text('View'),
+                    ),
+                  ],
+                ),
+              ),
+
               SizedBox(height: 24 * s),
 
               // Account Settings
@@ -179,13 +241,11 @@ class SettingsScreen extends ConsumerWidget {
               ),
               SizedBox(height: 12 * s),
 
-              // NAVIGATE to real ProfileScreen (reads auth_provider)
               _buildTile(
                 icon: Icons.person_outline,
                 label: 'Profile',
                 onTap: () => Navigator.pushNamed(context, Routes.profile),
               ),
-
               _buildTile(
                 icon: Icons.language,
                 label: 'Change language',
@@ -221,17 +281,29 @@ class SettingsScreen extends ConsumerWidget {
               _buildLinkTile(
                 icon: Icons.article_outlined,
                 label: 'Terms and Condition',
-                onTap: () {},
+                onTap: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Link belum diisi')),
+                  );
+                },
               ),
               _buildLinkTile(
                 icon: Icons.security_outlined,
                 label: 'Privacy policy',
-                onTap: () {},
+                onTap: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Link belum diisi')),
+                  );
+                },
               ),
               _buildLinkTile(
                 icon: Icons.info_outline,
                 label: 'Help',
-                onTap: () {},
+                onTap: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Link belum diisi')),
+                  );
+                },
               ),
 
               const Spacer(),
@@ -265,7 +337,7 @@ class SettingsScreen extends ConsumerWidget {
 
               SizedBox(height: 12 * s),
 
-              // App Version
+              // App Version (static; bisa kamu ganti package_info_plus kalau mau dinamis)
               Center(
                 child: Text(
                   'Version 1.0.0',

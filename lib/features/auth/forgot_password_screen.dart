@@ -1,22 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:fountaine/providers/provider/auth_provider.dart';
 
-class ForgotPasswordScreen extends StatefulWidget {
+class ForgotPasswordScreen extends ConsumerStatefulWidget {
   const ForgotPasswordScreen({super.key});
 
   @override
-  State<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
+  ConsumerState<ForgotPasswordScreen> createState() =>
+      _ForgotPasswordScreenState();
 }
 
-class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
+class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailCtrl = TextEditingController();
   bool _isSending = false;
 
-  // simple email validator
+  // Validator email sederhana (biar nggak tergantung utils lain)
   String? _validateEmail(String? v) {
     if (v == null || v.trim().isEmpty) return 'Email tidak boleh kosong';
     final email = v.trim();
-    final regex = RegExp(r"^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$");
+    final regex = RegExp(r'^[\w\.-]+@([\w-]+\.)+[\w-]{2,4}$');
     if (!regex.hasMatch(email)) return 'Format email tidak valid';
     return null;
   }
@@ -25,29 +28,40 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isSending = true);
 
-    // simulate network call
-    await Future.delayed(const Duration(seconds: 2));
+    try {
+      // === Riverpod AuthNotifier ===
+      await ref
+          .read(authProvider.notifier)
+          .sendPasswordReset(_emailCtrl.text.trim());
 
-    setState(() => _isSending = false);
-
-    // show success dialog/snackbar
-    if (!mounted) return;
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Berhasil'),
-        content: Text(
-          'Link reset password telah dikirim ke ${_emailCtrl.text.trim()}.'
-          '\nCek inbox atau folder spam ya.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Oke'),
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Berhasil'),
+          content: Text(
+            'Link reset password telah dikirim ke ${_emailCtrl.text.trim()}.\n'
+            'Cek inbox atau folder spam ya.',
           ),
-        ],
-      ),
-    );
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(ctx).pop();
+                Navigator.of(context).maybePop(); // kembali ke login
+              },
+              child: const Text('Oke'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Gagal kirim reset: $e')));
+    } finally {
+      if (mounted) setState(() => _isSending = false);
+    }
   }
 
   @override
@@ -59,10 +73,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isValid = _validateEmail(_emailCtrl.text) == null;
 
     return Scaffold(
-      // nice transparent appbar with back button
+      // AppBar transparan biar nyatu sama gradient
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
@@ -70,9 +83,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         title: const Text('Forgot Password'),
         centerTitle: true,
       ),
+
       body: Stack(
         children: [
-          // background gradient
+          // === background gradient ===
           Container(
             decoration: const BoxDecoration(
               gradient: LinearGradient(
@@ -82,13 +96,14 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               ),
             ),
           ),
-          // content
+
+          // === content ===
           SafeArea(
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 36),
               child: Column(
                 children: [
-                  // header card
+                  // --- header card ---
                   Card(
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(18),
@@ -116,10 +131,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                             ),
                           ),
                           const SizedBox(width: 14),
-                          Expanded(
+                          const Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
-                              children: const [
+                              children: [
                                 Text(
                                   'Lupa Password?',
                                   style: TextStyle(
@@ -141,7 +156,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                   ),
                   const SizedBox(height: 24),
 
-                  // form card
+                  // --- form card ---
                   Card(
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
@@ -151,7 +166,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                       padding: const EdgeInsets.all(18),
                       child: Form(
                         key: _formKey,
-                        onChanged: () => setState(() {}),
+                        onChanged: () =>
+                            setState(() {}), // enable/disable tombol dinamis
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
@@ -182,14 +198,13 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                             ),
                             const SizedBox(height: 16),
 
-                            // subtle helper text
                             const Text(
                               'Kami akan mengirimkan instruksi reset password ke email tersebut. Link berlaku 24 jam.',
                               style: TextStyle(fontSize: 12),
                             ),
                             const SizedBox(height: 18),
 
-                            // action button
+                            // --- action button ---
                             SizedBox(
                               height: 48,
                               child: ElevatedButton(
@@ -216,10 +231,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                                               ),
                                         ),
                                       )
-                                    : Row(
+                                    : const Row(
                                         mainAxisAlignment:
                                             MainAxisAlignment.center,
-                                        children: const [
+                                        children: [
                                           Icon(Icons.send_outlined, size: 18),
                                           SizedBox(width: 10),
                                           Text('Kirim Link Reset'),
@@ -230,14 +245,11 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
                             const SizedBox(height: 12),
 
-                            // secondary action
+                            // --- secondary action ---
                             TextButton(
                               onPressed: _isSending
                                   ? null
-                                  : () {
-                                      // contoh: kembali ke login
-                                      Navigator.of(context).pop();
-                                    },
+                                  : () => Navigator.of(context).maybePop(),
                               child: const Text('Kembali ke Login'),
                             ),
                           ],
@@ -248,14 +260,14 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
                   const SizedBox(height: 20),
 
-                  // extra tips area
+                  // --- tips ---
                   Row(
                     children: [
                       const Icon(Icons.info_outline, size: 16),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'Tip: Jika tidak menerima email, cek folder Spam atau gunakan fitur "Kirim Ulang" setelah beberapa menit.',
+                          'Tip: Jika tidak menerima email, cek folder Spam atau coba lagi beberapa menit kemudian.',
                           style: TextStyle(
                             fontSize: 13,
                             color: Colors.grey[700],
