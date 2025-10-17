@@ -2,26 +2,46 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-// Providers (sinkron dummy dari kit + notif)
+// Provider kit (nilai sama persis yang dipakai MonitorScreen)
 import '../../providers/provider/kit_provider.dart';
-import '../../providers/provider/notification_provider.dart';
 
-// Argumen route satu-satunya
-import '../../models/nav_args.dart';
+// NOTE: kita gak butuh notification_provider di versi sinkron monitor ini,
+// karena history akan dibangun dari snapshot nilai kit yang terus diperbarui.
+// import '../../providers/provider/notification_provider.dart';
 
 class HistoryScreen extends ConsumerStatefulWidget {
-  const HistoryScreen({super.key});
+  // Kit yang ingin ditarget (opsional; kalau kosong akan pakai kit pertama)
+  final String kitId;
+
+  // Opsional: waktu target untuk auto-scroll ke item terdekat
+  final DateTime? targetTime;
+
+  const HistoryScreen({super.key, this.kitId = 'devkit-01', this.targetTime});
 
   @override
   ConsumerState<HistoryScreen> createState() => _HistoryScreenState();
 }
 
 class _HistoryScreenState extends ConsumerState<HistoryScreen> {
-  DateTime? selectedDate; // tanggal filter aktif
+  // ====== UI State ======
+  DateTime? selectedDate; // filter hari aktif
   final ScrollController _scroll = ScrollController();
-  final Map<int, GlobalKey> _itemKeys = {}; // key tiap item utk ensureVisible
+  final Map<int, GlobalKey> _itemKeys =
+      {}; // key per item (untuk ensureVisible)
   DateTime? _pendingTargetTime; // target loncat (dari args)
 
+  // ====== Snapshot Buffer (in-memory) ======
+  // Kita bikin buffer local supaya yang ditampilkan history bener-bener
+  // nilai yang sama dengan di Monitor (dibaca dari provider 'kits').
+  //
+  // Setiap ada perubahan lastUpdated pada kit aktif, kita simpan 1 snapshot.
+  // Kapasitas buffer dibatasi biar ringan.
+  static const int _maxSnapshots = 200;
+  DateTime? _lastSeenTs; // untuk deteksi perubahan (lastUpdated terakhir)
+  final List<Map<String, dynamic>> _snapshots =
+      []; // [{date, kit, id, ph, ppm, humidity, temperature}]
+
+  // Palet warna (samakan dengan Monitor)
   static const Color _bg = Color(0xFFF6FBF6);
   static const Color _primary = Color(0xFF154B2E);
   static const Color _muted = Color(0xFF7A7A7A);
@@ -29,41 +49,71 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   @override
   void initState() {
     super.initState();
-    // Ambil args setelah frame terpasang
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final raw = ModalRoute.of(context)?.settings.arguments;
-      final args = raw is HistoryRouteArgs ? raw : null; // aman: satu tipe saja
-      if (args?.targetTime != null) {
-        _pendingTargetTime = args!.targetTime;
-        setState(() {
-          selectedDate = DateTime(
-            args.targetTime!.year,
-            args.targetTime!.month,
-            args.targetTime!.day,
-          );
-        });
+
+    // Pastikan loop simulasi nyala kalau data kosong (biar history jalan sendiri).
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (ref.read(kitListProvider).isEmpty) {
+        await ref.read(kitListProvider.notifier).ensureSimRunning();
       }
     });
+
+    // Sinkron target scroll & filter hari dari constructor (kalau ada)
+    if (widget.targetTime != null) {
+      _pendingTargetTime = widget.targetTime;
+      selectedDate = DateTime(
+        widget.targetTime!.year,
+        widget.targetTime!.month,
+        widget.targetTime!.day,
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final s = MediaQuery.of(context).size.width / 375.0;
 
-    // Data dari providers
+    // Ambil data kit terkini dari provider (sama dengan MonitorScreen)
     final kits = ref.watch(kitListProvider);
-    final notifs = ref.watch(notificationListProvider);
 
-    // Bangun history dummy sinkron (PPM/PH pas dengan notifikasi)
-    final history = _buildHistoryFromProviders(
-      kits,
-      notifs,
-    )..sort((a, b) => (b['date'] as DateTime).compareTo(a['date'] as DateTime));
+    // Pilih kit aktif: sama logika dengan monitor (fallback ke first)
+    final Kit? kit = _pickActiveKit(kits, widget.kitId);
+
+    // Baca nilai sensor dengan helper yang sama bentuknya seperti di Monitor
+    final ph = _readSensor(kit, 'ph');
+    final ppm = _readSensor(kit, 'ppm');
+    final humidity = _readSensor(kit, 'humidity');
+    final temperature = _readSensor(kit, 'temperature');
+
+    // === Update snapshot buffer kalau ada perubahan waktu (lastUpdated) ===
+    if (kit != null && (kit.lastUpdated != _lastSeenTs)) {
+      _lastSeenTs = kit.lastUpdated;
+
+      final snap = {
+        'date': kit.lastUpdated,
+        'kit': kit.name,
+        'id': kit.id,
+        'ph': double.tryParse(ph.toStringAsFixed(2)) ?? ph,
+        'ppm': ppm.round(),
+        'humidity': double.tryParse(humidity.toStringAsFixed(1)) ?? humidity,
+        'temperature':
+            double.tryParse(temperature.toStringAsFixed(1)) ?? temperature,
+      };
+
+      _snapshots.insert(0, snap); // paling baru di atas
+      if (_snapshots.length > _maxSnapshots) {
+        _snapshots.removeRange(_maxSnapshots, _snapshots.length);
+      }
+    }
+
+    // Sort desc by date (jaga-jaga)
+    _snapshots.sort(
+      (a, b) => (b['date'] as DateTime).compareTo(a['date'] as DateTime),
+    );
 
     // Filter by selectedDate (jika ada)
-    final filteredData = selectedDate == null
-        ? history
-        : history.where((item) {
+    final List<Map<String, dynamic>> filteredData = selectedDate == null
+        ? List<Map<String, dynamic>>.from(_snapshots)
+        : _snapshots.where((item) {
             final d1 = DateFormat(
               'yyyy-MM-dd',
             ).format(item['date'] as DateTime);
@@ -71,9 +121,9 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             return d1 == d2;
           }).toList();
 
-    // Setelah list dirender, kalau ada target, loncat
+    // Setelah list selesai dirender, kalau ada target → loncat
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_pendingTargetTime != null) {
+      if (_pendingTargetTime != null && filteredData.isNotEmpty) {
         _jumpToTarget(_pendingTargetTime!, filteredData);
         _pendingTargetTime = null;
       }
@@ -81,47 +131,24 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 
     return Scaffold(
       backgroundColor: _bg,
+      appBar: AppBar(
+        backgroundColor: _bg,
+        elevation: 0,
+        centerTitle: true,
+        // Samain gaya dengan Monitor: judul simple tanpa kitId di judul
+        title: const Text(
+          'History',
+          style: TextStyle(color: _primary, fontWeight: FontWeight.w800),
+        ),
+        iconTheme: const IconThemeData(color: _primary),
+      ),
       body: SafeArea(
         child: Padding(
           padding: EdgeInsets.symmetric(horizontal: 20 * s, vertical: 14 * s),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ===== Header =====
-              Row(
-                children: [
-                  CircleAvatar(
-                    backgroundColor: Colors.white,
-                    radius: 20 * s,
-                    child: IconButton(
-                      padding: EdgeInsets.zero,
-                      icon: Icon(
-                        Icons.arrow_back,
-                        color: _primary,
-                        size: 20 * s,
-                      ),
-                      onPressed: () => Navigator.maybePop(context),
-                    ),
-                  ),
-                  Expanded(
-                    child: Center(
-                      child: Text(
-                        'History',
-                        style: TextStyle(
-                          fontSize: 20 * s,
-                          fontWeight: FontWeight.w800,
-                          color: _primary,
-                        ),
-                      ),
-                    ),
-                  ),
-                  SizedBox(width: 40 * s),
-                ],
-              ),
-
-              SizedBox(height: 16 * s),
-
-              // ===== Date Picker =====
+              // ===== Date Picker (filter harian) =====
               GestureDetector(
                 onTap: () async {
                   final picked = await showDatePicker(
@@ -187,10 +214,6 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                     itemBuilder: (context, index) {
                       final item = filteredData[index];
                       final date = item['date'] as DateTime;
-                      final formattedDate = DateFormat(
-                        'd MMMM yyyy, HH:mm:ss',
-                      ).format(date);
-
                       final key = _itemKeys.putIfAbsent(
                         date.millisecondsSinceEpoch,
                         () => GlobalKey(),
@@ -208,6 +231,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
+                              // Nama Kit
                               Text(
                                 item['kit'] as String,
                                 style: TextStyle(
@@ -217,6 +241,8 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                                 ),
                               ),
                               SizedBox(height: 6 * s),
+
+                              // ID Kit
                               Text(
                                 item['id'] as String,
                                 style: TextStyle(
@@ -225,6 +251,8 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                                 ),
                               ),
                               SizedBox(height: 6 * s),
+
+                              // Nilai sensor (sinkron monitor)
                               Text(
                                 'Water Acidity : ${item['ph']} pH',
                                 style: TextStyle(
@@ -254,10 +282,14 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                                 ),
                               ),
                               SizedBox(height: 8 * s),
+
+                              // Timestamp
                               Align(
                                 alignment: Alignment.bottomRight,
                                 child: Text(
-                                  formattedDate,
+                                  DateFormat(
+                                    'd MMMM yyyy, HH:mm:ss',
+                                  ).format(date),
                                   style: TextStyle(
                                     color: _muted,
                                     fontSize: 12 * s,
@@ -276,7 +308,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
         ),
       ),
 
-      // ===== FAB Placeholder =====
+      // ===== FAB Placeholder (nanti buat export/clear, dll) =====
       floatingActionButton: FloatingActionButton(
         backgroundColor: _primary,
         onPressed: () {
@@ -292,82 +324,40 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     );
   }
 
-  /// Generate history dummy dari providers:
-  /// - Entry khusus di timestamp notifikasi agar nilai sensor "menjelaskan" notif.
-  /// - Tambah snapshot sebelum/sesudah agar timeline terasa alami.
-  List<Map<String, dynamic>> _buildHistoryFromProviders(
-    List<Kit> kits,
-    List<NotificationItem> notifs,
-  ) {
-    final List<Map<String, dynamic>> items = [];
+  // =======================
+  // ---------- Helpers ----
+  // =======================
 
-    Map<String, dynamic> _baselineForKit(Kit? k) => {
-      'kit': k?.name ?? 'Unknown Kit',
-      'id': k?.id ?? 'UNKNOWN-ID',
-      'ph': (k?.ph ?? 6.7).toStringAsFixed(1),
-      'ppm': (k?.ppm ?? 300).round(),
-      'humidity': (k?.humidity ?? 75).round(),
-      'temperature': (k?.temperature ?? 28).round(),
-    };
+  /// Pilih kit aktif berdasarkan kitId preferensi; kalau gak ada → pakai first.
+  Kit? _pickActiveKit(List<Kit> kits, String preferId) {
+    if (kits.isEmpty) return null;
+    final idx = kits.indexWhere((k) => k.id == preferId);
+    return idx == -1 ? kits.first : kits[idx];
+  }
 
-    Kit _fallback() => Kit(
-      id: 'SUF-UINJKT-HM-F2000',
-      name: 'Hydroponic System',
-      ph: 6.7,
-      ppm: 300,
-      humidity: 75,
-      temperature: 28,
-    );
+  /// Baca nilai sensor dari Kit (mendukung schema fleksibel seperti Monitor)
+  double _readSensor(Kit? kit, String key) {
+    if (kit == null) return 0;
+    try {
+      final dyn = kit as dynamic;
 
-    Kit _findKitByName(String? name) {
-      if (name == null) return kits.isNotEmpty ? kits.first : _fallback();
-      for (final k in kits) {
-        if (k.name == name) return k;
+      if (dyn.sensors != null && dyn.sensors[key] != null) {
+        final v = dyn.sensors[key];
+        if (v is num) return v.toDouble();
+        if (v is String) return double.tryParse(v) ?? 0;
       }
-      return kits.isNotEmpty ? kits.first : _fallback();
+      if (key == 'ph' && dyn.ph != null) return (dyn.ph as num).toDouble();
+      if (key == 'ppm' && dyn.ppm != null) return (dyn.ppm as num).toDouble();
+      if (key == 'humidity' && dyn.humidity != null) {
+        return (dyn.humidity as num).toDouble();
+      }
+      if (key == 'temperature' && dyn.temperature != null) {
+        return (dyn.temperature as num).toDouble();
+      }
+    } catch (_) {
+      /* swallow */
     }
-
-    for (final n in notifs) {
-      final kit = _findKitByName(n.kitName);
-      final base = _baselineForKit(kit);
-
-      // Sesuaikan nilai agar match pesan notifikasi
-      final msg = n.message.toLowerCase();
-      if (n.level == 'urgent' && msg.contains('tds reached 850')) {
-        base['ppm'] = 850;
-      }
-      if (n.level == 'warning' && msg.contains('ph dropped to 5.8')) {
-        base['ph'] = 5.8.toStringAsFixed(1);
-      }
-      if (n.level == 'warning' && msg.contains('ppm dropped to 100')) {
-        base['ppm'] = 100;
-      }
-
-      items.add({'date': n.timestamp, ...base});
-      items.add({
-        'date': n.timestamp.subtract(const Duration(minutes: 20)),
-        ..._baselineForKit(kit),
-      });
-      items.add({
-        'date': n.timestamp.add(const Duration(minutes: 15)),
-        ..._baselineForKit(kit),
-      });
-    }
-
-    if (items.isEmpty) {
-      final k = kits.isNotEmpty ? kits.first : _fallback();
-      final base = _baselineForKit(k);
-      items.add({
-        'date': DateTime.now().subtract(const Duration(hours: 3)),
-        ...base,
-      });
-      items.add({
-        'date': DateTime.now().subtract(const Duration(hours: 1)),
-        ...base,
-      });
-    }
-
-    return items;
+    return 0;
   }
 
   /// Loncat ke item dengan timestamp paling dekat ke [target]

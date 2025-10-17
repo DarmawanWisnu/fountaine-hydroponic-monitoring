@@ -178,7 +178,7 @@ class _VerifyScreenState extends ConsumerState<VerifyScreen> {
                             'Fountaine',
                             style: TextStyle(
                               color: Colors.white,
-                              fontSize: 20,
+                              fontSize: 15,
                               fontWeight: FontWeight.w800,
                             ),
                           ),

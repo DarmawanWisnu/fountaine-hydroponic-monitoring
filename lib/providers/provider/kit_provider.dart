@@ -1,28 +1,52 @@
 // lib/providers/kit_provider.dart
+// -----------------------------------------------------------------------------
+// Provider daftar Kit (StateNotifier<List<Kit>>) yang bisa sumber data dari:
+// 1) Mode SIMULASI (dummy local): seedDummy() + simulateSensorUpdate()
+// 2) Mode LIVE (MQTT): listenFromMqtt(kitId) -> update dari stream telemetry/status
+//
+// Catatan:
+// - Penyimpanan ringan pakai SharedPreferences (persist list Kit terakhir).
+// - Mapping telemetry -> properti Kit:
+//     Telemetry.tempC     -> temperature
+//     Telemetry.waterLevel-> (kita map ke "humidity" untuk UI sekarang)
+// - Kamu bisa panggil dari MonitorScreen:
+//     if (simulated) { seedDummy(); simulate tiap 5 dtk }
+//     else { listenFromMqtt(kitId); }
+// -----------------------------------------------------------------------------
+
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+// ===== Tambahan untuk mode LIVE (MQTT) =====
+import 'package:fountaine/core/constants.dart';
+import 'package:fountaine/domain/telemetry.dart';
+import 'package:fountaine/domain/device_status.dart';
+import 'package:fountaine/services/mqtt_service.dart';
+
+// ===== Provider publik =====
 final kitListProvider = StateNotifierProvider<KitListNotifier, List<Kit>>((
   ref,
 ) {
   return KitListNotifier();
 });
 
+// ===== Model Kit sederhana (cukup untuk UI saat ini) =====
 class Kit {
   final String id;
   final String name;
   final bool online;
   final DateTime lastUpdated;
 
-  // optional explicit fields (useful for direct access)
+  // Field eksplisit (mudah diakses UI)
   final double? ph;
   final double? ppm;
-  final double? humidity;
+  final double? humidity; // NOTE: sementara kita gunakan sebagai "waterLevel"
   final double? temperature;
 
-  // flexible map for sensors (string -> num or string)
+  // Map fleksibel untuk sensor lain (opsional)
   final Map<String, dynamic>? sensors;
 
   Kit({
@@ -102,11 +126,24 @@ class Kit {
 
 class KitListNotifier extends StateNotifier<List<Kit>> {
   KitListNotifier() : super([]) {
-    _load();
+    _load(); // muat list Kit tersimpan (jika ada)
   }
 
+  // ====== Storage key untuk SharedPreferences ======
   static const _storageKey = 'kits';
 
+  // ====== MQTT Service & Subscriptions (mode LIVE) ======
+  final MqttService _mqtt = MqttService();
+  StreamSubscription<Telemetry>? _telemetrySub;
+  StreamSubscription<DeviceStatus>? _statusSub;
+  String? _currentKitId; // kitId yang sedang dilisten
+
+  // ====== SIM LOOP GLOBAL (biar tetap jalan meski pindah layar) ======
+  Timer? _simTimer;
+
+  // -----------------------------------------------------------------------------
+  // Persistensi ringan: load/save list Kit
+  // -----------------------------------------------------------------------------
   Future<void> _load() async {
     try {
       final sp = await SharedPreferences.getInstance();
@@ -130,6 +167,9 @@ class KitListNotifier extends StateNotifier<List<Kit>> {
     );
   }
 
+  // -----------------------------------------------------------------------------
+  // CRUD Kit
+  // -----------------------------------------------------------------------------
   Future<void> addKit(Kit kit) async {
     if (state.any((k) => k.id == kit.id)) {
       throw Exception('ID Kit sudah terdaftar');
@@ -159,52 +199,58 @@ class KitListNotifier extends StateNotifier<List<Kit>> {
     await sp.remove(_storageKey);
   }
 
+  // -----------------------------------------------------------------------------
+  // MODE 1: SIMULASI (dummy lokal)
+  // -----------------------------------------------------------------------------
   /// Jika kosong, tambahkan satu dummy kit (dipanggil dari MonitorScreen init)
   Future<void> seedDummy() async {
     if (state.isNotEmpty) return;
     final dummy = Kit(
-      id: 'SUF-UINJKT-HM-F2000',
-      name: 'Hydroponic System',
+      id: AppConst.defaultKitId,
+      name: 'Hydroponic System (Dummy)',
       online: true,
       lastUpdated: DateTime.now(),
       // initial sensor snapshot
       ph: 6.7,
       ppm: 300,
-      humidity: 75.0,
-      temperature: 28.0,
-      sensors: {'ph': 6.7, 'ppm': 300, 'humidity': 75.0, 'temperature': 28.0},
+      humidity: 72.0, // sementara mapping "waterLevel" -> "humidity"
+      temperature: 27.0,
+      sensors: {'ph': 6.7, 'ppm': 300, 'humidity': 72.0, 'temperature': 27.0},
     );
     state = [dummy];
     await _save();
   }
 
-  /// Simulate new sensor values for all kits (useful for testing)
+  /// Simulasikan pergerakan sensor untuk semua kit (panggil tiap 5 dtk)
   Future<void> simulateSensorUpdate() async {
     final rnd = Random();
     final now = DateTime.now();
 
     final newList = state.map((k) {
-      // generate small random changes around current value (if present)
-      double nextPh = k.ph ?? (5 + rnd.nextDouble() * 3); // 5..8
-      nextPh += (rnd.nextDouble() - 0.5) * 0.4; // small jitter
+      // generate perubahan kecil di sekitar nilai saat ini
+      double nextPh = k.ph ?? (5.8 + rnd.nextDouble() * 0.8); // 5.8..6.6
+      nextPh += (rnd.nextDouble() - 0.5) * 0.10; // jitter kecil
       nextPh = double.parse(nextPh.toStringAsFixed(2));
 
-      double nextPpm = k.ppm ?? (200 + rnd.nextDouble() * 200);
-      nextPpm += (rnd.nextDouble() - 0.5) * 30;
+      double nextPpm = k.ppm ?? (850 + rnd.nextDouble() * 200); // 850..1050
+      nextPpm += (rnd.nextDouble() - 0.5) * 25; // ±12.5
       nextPpm = nextPpm.clamp(0, 3000);
 
-      double nextHumidity = k.humidity ?? (50 + rnd.nextDouble() * 30);
-      nextHumidity += (rnd.nextDouble() - 0.5) * 6;
-      nextHumidity = nextHumidity.clamp(0, 100);
+      double nextHumidity =
+          k.humidity ?? (70 + rnd.nextDouble() * 10); // 70..80
+      nextHumidity += (rnd.nextDouble() - 0.5) * 2.5;
+      nextHumidity = double.parse(
+        nextHumidity.clamp(0, 100).toStringAsFixed(1),
+      );
 
-      double nextTemp = k.temperature ?? (22 + rnd.nextDouble() * 6);
-      nextTemp += (rnd.nextDouble() - 0.5) * 2;
+      double nextTemp = k.temperature ?? (26 + rnd.nextDouble() * 2); // 26..28
+      nextTemp += (rnd.nextDouble() - 0.5) * 0.4;
       nextTemp = double.parse(nextTemp.toStringAsFixed(1));
 
       final sensors = {
         'ph': nextPh,
         'ppm': nextPpm.round(),
-        'humidity': double.parse(nextHumidity.toStringAsFixed(1)),
+        'humidity': nextHumidity,
         'temperature': nextTemp,
       };
 
@@ -220,5 +266,120 @@ class KitListNotifier extends StateNotifier<List<Kit>> {
 
     state = newList;
     await _save();
+  }
+
+  /// Jalankan loop simulasi global (aman dipanggil berkali-kali).
+  Future<void> ensureSimRunning({
+    Duration period = const Duration(seconds: 5),
+  }) async {
+    if (state.isEmpty) {
+      await seedDummy();
+    }
+    // lakukan 1 update awal biar UI langsung gerak
+    await simulateSensorUpdate();
+
+    // kalau sudah ada timer aktif, jangan dobel
+    if (_simTimer != null && _simTimer!.isActive) return;
+
+    _simTimer = Timer.periodic(period, (_) async {
+      try {
+        await simulateSensorUpdate();
+      } catch (_) {
+        /* swallow sim error */
+      }
+    });
+  }
+
+  /// Hentikan loop simulasi global (opsional)
+  void stopSim() {
+    _simTimer?.cancel();
+    _simTimer = null;
+  }
+
+  // -----------------------------------------------------------------------------
+  // MODE 2: LIVE (MQTT)
+  // -----------------------------------------------------------------------------
+  /// Pastikan Kit id/name ada di state; jika belum, tambahkan.
+  void _ensureKitInState(String kitId, {String? name}) {
+    if (state.any((k) => k.id == kitId)) return;
+    final newKit = Kit(
+      id: kitId,
+      name: name ?? 'Hydroponic Kit ($kitId)',
+      online: false,
+      lastUpdated: DateTime.now(),
+      sensors: const {},
+    );
+    state = [newKit, ...state];
+  }
+
+  /// Mulai listen dari MQTT untuk 1 kitId
+  Future<void> listenFromMqtt(String kitId, {String? kitName}) async {
+    // kalau sebelumnya sudah listen kit lain, hentikan dulu
+    if (_currentKitId != null && _currentKitId != kitId) {
+      await stopListening();
+    }
+    _currentKitId = kitId;
+
+    _ensureKitInState(kitId, name: kitName);
+
+    // connect ke broker, set LWT, subscribe, dll.
+    await _mqtt.connect(kitId: kitId);
+
+    // telemetry stream -> update nilai sensor
+    _telemetrySub = _mqtt.telemetry$(kitId).listen((t) {
+      state = [
+        for (final k in state)
+          k.id == kitId
+              ? k.copyWith(
+                  ph: t.ph,
+                  ppm: t.ppm,
+                  temperature: t.tempC,
+                  // NOTE: Telemetry.waterLevel kita map ke "humidity" untuk UI saat ini
+                  humidity: t.waterLevel,
+                  sensors: {
+                    'ph': t.ph,
+                    'ppm': t.ppm,
+                    'temperature': t.tempC,
+                    'humidity': t.waterLevel,
+                  },
+                  lastUpdated: t.ts,
+                  online: true,
+                )
+              : k,
+      ];
+      _save(); // persist ringan
+    });
+
+    // status stream -> update online/lastSeen
+    _statusSub = _mqtt.status$(kitId).listen((s) {
+      state = [
+        for (final k in state)
+          k.id == kitId
+              ? k.copyWith(
+                  online: s.online,
+                  lastUpdated: s.lastSeen ?? k.lastUpdated,
+                )
+              : k,
+      ];
+      _save();
+    });
+  }
+
+  /// Hentikan semua langganan MQTT (panggil saat dispose / pindah kit)
+  Future<void> stopListening() async {
+    await _telemetrySub?.cancel();
+    await _statusSub?.cancel();
+    _telemetrySub = null;
+    _statusSub = null;
+    _currentKitId = null;
+    await _mqtt.dispose();
+  }
+
+  @override
+  void dispose() {
+    // pastikan MQTT & subscriptions ditutup saat provider dispose
+    stopListening();
+    stopSim();
+    super.dispose();
   }
 }
