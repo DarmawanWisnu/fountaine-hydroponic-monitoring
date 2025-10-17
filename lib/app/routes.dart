@@ -1,11 +1,5 @@
-// lib/app/routes.dart
-// Router + AuthGate (Riverpod) yang auto-redirect Login / Verify / Home.
-// Pakai di MaterialApp: `home: const AuthGate(),` dan `onGenerateRoute: onGenerateRoute`.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
-// === FEATURES (SESUAI PATH) ===
 import 'package:fountaine/features/add_kit/add_kit_screen.dart';
 import 'package:fountaine/features/auth/login_screen.dart';
 import 'package:fountaine/features/auth/register_screen.dart';
@@ -17,17 +11,14 @@ import 'package:fountaine/features/monitor/monitor_screen.dart';
 import 'package:fountaine/features/settings/settings_screen.dart';
 import 'package:fountaine/features/profile/profile_screen.dart';
 import 'package:fountaine/features/notifications/notification_screen.dart';
-
-// === PROVIDER AUTH (SESUAI PATH) ===
-// Pastikan ini meng-ekspos `authStateProvider` (StreamProvider<User?>)
 import 'package:fountaine/providers/provider/auth_provider.dart';
 
 /// ---------------------------------------------------------------------------
-///  ARGUMENTS CLASS (untuk passing data ke halaman)
+///  ARGUMENTS CLASS
 /// ---------------------------------------------------------------------------
 class MonitorArgs {
   final String kitId;
-  final bool simulated; // toggle simulasi
+  final bool simulated;
   const MonitorArgs({required this.kitId, this.simulated = false});
 }
 
@@ -47,25 +38,17 @@ class AuthGate extends ConsumerWidget {
     final authState = ref.watch(authStateProvider);
 
     return authState.when(
-      // Saat stream mengembalikan User? (bisa null)
       data: (user) {
         if (user == null) {
-          // Belum login -> ke Login
           return const LoginScreen();
         }
         if (!(user.emailVerified)) {
-          // Sudah login tapi belum verifikasi -> ke Verify
           return const VerifyScreen();
         }
-        // Sudah login & verified -> ke Home
         return const HomeScreen();
       },
-
-      // Saat stream loading -> tampilkan splash kecil
       loading: () =>
           const Scaffold(body: Center(child: CircularProgressIndicator())),
-
-      // Saat error -> tampilkan pesan sederhana
       error: (e, _) =>
           Scaffold(body: Center(child: Text('Terjadi kesalahan: $e'))),
     );
@@ -89,7 +72,6 @@ class Routes {
   static const profile = '/profile';
   static const notifications = '/notifications';
 
-  /// Table routes statis (tanpa args)
   static final routes = <String, WidgetBuilder>{
     login: (c) => const LoginScreen(),
     register: (c) => const RegisterScreen(),
@@ -106,14 +88,14 @@ class Routes {
 }
 
 /// ---------------------------------------------------------------------------
-///  ON GENERATE ROUTE (untuk kirim arguments type-safe)
+///  ON GENERATE ROUTE
 /// ---------------------------------------------------------------------------
 Route<dynamic>? onGenerateRoute(RouteSettings settings) {
   switch (settings.name) {
     case Routes.monitor:
       final args = settings.arguments is MonitorArgs
           ? settings.arguments as MonitorArgs
-          : const MonitorArgs(kitId: 'devkit-01'); // fallback aman
+          : const MonitorArgs(kitId: 'devkit-01'); //
       return MaterialPageRoute(
         builder: (_) =>
             MonitorScreen(kitId: args.kitId, simulated: args.simulated),
@@ -130,12 +112,10 @@ Route<dynamic>? onGenerateRoute(RouteSettings settings) {
       );
 
     default:
-      // fallback ke table routes biasa
       final builder = Routes.routes[settings.name];
       if (builder != null) {
         return MaterialPageRoute(builder: builder, settings: settings);
       }
-      // unknown route
       return MaterialPageRoute(
         builder: (_) =>
             const Scaffold(body: Center(child: Text('Route tidak dikenal'))),

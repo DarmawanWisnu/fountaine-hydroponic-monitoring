@@ -1,4 +1,3 @@
-// lib/domain/device_status.dart
 class DeviceStatus {
   final bool online;
   final DateTime? lastSeen;

@@ -1,21 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
-// Provider kit (nilai sama persis yang dipakai MonitorScreen)
 import '../../providers/provider/kit_provider.dart';
 
-// NOTE: kita gak butuh notification_provider di versi sinkron monitor ini,
-// karena history akan dibangun dari snapshot nilai kit yang terus diperbarui.
-// import '../../providers/provider/notification_provider.dart';
-
 class HistoryScreen extends ConsumerStatefulWidget {
-  // Kit yang ingin ditarget (opsional; kalau kosong akan pakai kit pertama)
   final String kitId;
-
-  // Opsional: waktu target untuk auto-scroll ke item terdekat
   final DateTime? targetTime;
-
   const HistoryScreen({super.key, this.kitId = 'devkit-01', this.targetTime});
 
   @override
@@ -28,20 +18,13 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   final ScrollController _scroll = ScrollController();
   final Map<int, GlobalKey> _itemKeys =
       {}; // key per item (untuk ensureVisible)
-  DateTime? _pendingTargetTime; // target loncat (dari args)
+  DateTime? _pendingTargetTime;
 
   // ====== Snapshot Buffer (in-memory) ======
-  // Kita bikin buffer local supaya yang ditampilkan history bener-bener
-  // nilai yang sama dengan di Monitor (dibaca dari provider 'kits').
-  //
-  // Setiap ada perubahan lastUpdated pada kit aktif, kita simpan 1 snapshot.
-  // Kapasitas buffer dibatasi biar ringan.
-  static const int _maxSnapshots = 200;
-  DateTime? _lastSeenTs; // untuk deteksi perubahan (lastUpdated terakhir)
-  final List<Map<String, dynamic>> _snapshots =
-      []; // [{date, kit, id, ph, ppm, humidity, temperature}]
 
-  // Palet warna (samakan dengan Monitor)
+  static const int _maxSnapshots = 200;
+  DateTime? _lastSeenTs;
+  final List<Map<String, dynamic>> _snapshots = [];
   static const Color _bg = Color(0xFFF6FBF6);
   static const Color _primary = Color(0xFF154B2E);
   static const Color _muted = Color(0xFF7A7A7A);
@@ -50,14 +33,12 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   void initState() {
     super.initState();
 
-    // Pastikan loop simulasi nyala kalau data kosong (biar history jalan sendiri).
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (ref.read(kitListProvider).isEmpty) {
         await ref.read(kitListProvider.notifier).ensureSimRunning();
       }
     });
 
-    // Sinkron target scroll & filter hari dari constructor (kalau ada)
     if (widget.targetTime != null) {
       _pendingTargetTime = widget.targetTime;
       selectedDate = DateTime(
@@ -71,14 +52,8 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   @override
   Widget build(BuildContext context) {
     final s = MediaQuery.of(context).size.width / 375.0;
-
-    // Ambil data kit terkini dari provider (sama dengan MonitorScreen)
     final kits = ref.watch(kitListProvider);
-
-    // Pilih kit aktif: sama logika dengan monitor (fallback ke first)
     final Kit? kit = _pickActiveKit(kits, widget.kitId);
-
-    // Baca nilai sensor dengan helper yang sama bentuknya seperti di Monitor
     final ph = _readSensor(kit, 'ph');
     final ppm = _readSensor(kit, 'ppm');
     final humidity = _readSensor(kit, 'humidity');
@@ -99,18 +74,18 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             double.tryParse(temperature.toStringAsFixed(1)) ?? temperature,
       };
 
-      _snapshots.insert(0, snap); // paling baru di atas
+      _snapshots.insert(0, snap);
       if (_snapshots.length > _maxSnapshots) {
         _snapshots.removeRange(_maxSnapshots, _snapshots.length);
       }
     }
 
-    // Sort desc by date (jaga-jaga)
+    // Sort desc by date
     _snapshots.sort(
       (a, b) => (b['date'] as DateTime).compareTo(a['date'] as DateTime),
     );
 
-    // Filter by selectedDate (jika ada)
+    // Filter by selectedDate
     final List<Map<String, dynamic>> filteredData = selectedDate == null
         ? List<Map<String, dynamic>>.from(_snapshots)
         : _snapshots.where((item) {
@@ -135,7 +110,6 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
         backgroundColor: _bg,
         elevation: 0,
         centerTitle: true,
-        // Samain gaya dengan Monitor: judul simple tanpa kitId di judul
         title: const Text(
           'History',
           style: TextStyle(color: _primary, fontWeight: FontWeight.w800),
@@ -148,7 +122,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ===== Date Picker (filter harian) =====
+              // ===== Date Picker =====
               GestureDetector(
                 onTap: () async {
                   final picked = await showDatePicker(
@@ -159,7 +133,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                   );
                   if (picked != null) {
                     setState(() => selectedDate = picked);
-                    _pendingTargetTime = null; // reset target
+                    _pendingTargetTime = null;
                   }
                 },
                 child: Container(
@@ -308,7 +282,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
         ),
       ),
 
-      // ===== FAB Placeholder (nanti buat export/clear, dll) =====
+      // ===== FAB Placeholder =====
       floatingActionButton: FloatingActionButton(
         backgroundColor: _primary,
         onPressed: () {
@@ -335,7 +309,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     return idx == -1 ? kits.first : kits[idx];
   }
 
-  /// Baca nilai sensor dari Kit (mendukung schema fleksibel seperti Monitor)
+  /// Baca nilai sensor dari Kit
   double _readSensor(Kit? kit, String key) {
     if (kit == null) return 0;
     try {
@@ -360,7 +334,6 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     return 0;
   }
 
-  /// Loncat ke item dengan timestamp paling dekat ke [target]
   void _jumpToTarget(DateTime target, List<Map<String, dynamic>> filtered) {
     int? keyTs;
     Duration best = const Duration(days: 9999);

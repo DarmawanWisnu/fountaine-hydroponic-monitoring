@@ -123,7 +123,7 @@ class HomeScreen extends StatelessWidget {
 
                   // location block
                   Positioned(
-                    top: 60 * s, // <-- ubah angka ini untuk cocokin ke Figma
+                    top: 60 * s,
                     left: 0,
                     right: 0,
                     child: Column(

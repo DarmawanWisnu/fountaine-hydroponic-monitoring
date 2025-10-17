@@ -1,13 +1,7 @@
-// - Tampilkan email user aktif
-// - Kirim ulang email verifikasi via authProvider.notifier.sendEmailVerification()
-// - Muat ulang status via authProvider.notifier.reloadUser() -> kalau verified, ke Home
-// - Logout via authProvider.notifier.signOut()
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
-
 import 'package:fountaine/app/routes.dart';
 import 'package:fountaine/providers/provider/auth_provider.dart';
 
@@ -23,8 +17,8 @@ class VerifyScreen extends ConsumerStatefulWidget {
 }
 
 class _VerifyScreenState extends ConsumerState<VerifyScreen> {
-  bool _isWorking = false; // loading untuk aksi kirim ulang / refresh
-  bool _showTips = false; // toggle tips area
+  bool _isWorking = false;
+  bool _showTips = false;
 
   void _showSnack(String message) {
     ScaffoldMessenger.of(
@@ -33,7 +27,6 @@ class _VerifyScreenState extends ConsumerState<VerifyScreen> {
   }
 
   Future<void> _openMailApp() async {
-    // buka webmail (gmail).
     final uri = Uri.parse('https://mail.google.com/');
     try {
       final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);

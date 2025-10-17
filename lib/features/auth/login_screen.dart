@@ -13,18 +13,14 @@ class LoginScreen extends ConsumerStatefulWidget {
 }
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
-  // --- Controller input ---
   final _emailCtrl = TextEditingController();
   final _pwCtrl = TextEditingController();
-
-  // --- Form key untuk validasi ---
   final _formKey = GlobalKey<FormState>();
 
   // --- State UI ---
-  bool _loading = false; // disable tombol saat submit
-  bool _obscure = true; // toggle visibilitas password
+  bool _loading = false;
+  bool _obscure = true;
 
-  // --- Palet warna ---
   static const Color _bgColor = Color(0xFFF6FBF6);
   static const Color _primaryColor = Color(0xFF154B2E);
   static const Color _mutedText = Color(0xFF6B6B6B);
@@ -38,16 +34,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final pass = _pwCtrl.text;
 
     try {
-      // Pakai notifier dari authProvider
       final auth = ref.read(authProvider.notifier);
       await auth.signIn(email: email, password: pass);
-
       if (!mounted) return;
-
-      // Sukses login -> ke Home.
       Navigator.pushReplacementNamed(context, Routes.home);
     } catch (e) {
-      // Error singkat
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(e.toString())));
@@ -66,15 +57,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // Latar belakang sesuai tema
       backgroundColor: _bgColor,
-
-      // SafeArea + scroll agar aman saat keyboard muncul
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 36),
-
-          // Form dengan validator
           child: Form(
             key: _formKey,
 
@@ -219,12 +205,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                 const SizedBox(height: 24),
 
-                // ===== Tombol Sign In dengan animasi hover/press =====
+                // ===== Tombol Sign In =====
                 _HoverScaleButton(
                   height: 56,
                   radius: 40,
                   backgroundColor: _primaryColor,
-                  shadowColor: const Color(0x33154B2E), // soft green shadow
+                  shadowColor: const Color(0x33154B2E),
                   pressedScale: 0.985,
                   onPressed: _loading ? null : _submit,
                   child: _loading
@@ -251,12 +237,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   radius: 40,
                   backgroundColor: Colors.white,
                   borderColor: Colors.transparent,
-                  shadowColor: const Color(0x1A000000), // subtle shadow
+                  shadowColor: const Color(0x1A000000),
                   pressedScale: 0.985,
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      // Pastikan asset ini ada di pubspec.yaml
                       Image.asset('assets/images/google_logo.png', height: 20),
                       const SizedBox(width: 10),
                       const Text(
@@ -313,8 +298,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 }
 
-/// Reusable button: animasi hover (web/desktop) + press (mobile) + shadow.
-/// Dipakai untuk tombol Sign In & Google agar konsisten dan enak dilihat.
 class _HoverScaleButton extends StatefulWidget {
   final Widget child;
   final VoidCallback? onPressed;

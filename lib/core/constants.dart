@@ -1,22 +1,12 @@
-// lib/core/constants.dart
-// Baca konfigurasi dari file .env (flutter_dotenv) + konstanta project.
-
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:intl/intl.dart';
 
 class AppConst {
-  /// Interval pengiriman ringkasan (menit)
   static int get rollupMinutes =>
       int.tryParse(dotenv.env['ROLLUP_MINUTES'] ?? '30') ?? 30;
-
-  /// ID default kit
   static String get defaultKitId => dotenv.env['DEFAULT_KIT_ID'] ?? 'devkit-01';
-
-  /// Mode simulasi (aktifkan di Settings nanti)
   static bool get simulatedMode =>
       (dotenv.env['SIMULATED_MODE'] ?? 'false').toLowerCase() == 'true';
-
-  /// Format waktu global (ISO + lokal)
   static String formatDateTime(DateTime? dt) {
     if (dt == null) return "-";
     return DateFormat("yyyy-MM-dd HH:mm:ss").format(dt.toLocal());

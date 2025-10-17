@@ -1,6 +1,6 @@
 class MonitorArgs {
   final String kitId;
-  final bool simulated; // untuk toggle Simulated Mode cepat
+  final bool simulated;
   const MonitorArgs({required this.kitId, this.simulated = false});
 }
 

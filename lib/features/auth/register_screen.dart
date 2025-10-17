@@ -58,16 +58,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
     setState(() => _loading = true);
     try {
-      // NOTE:
-      // AuthNotifier kita sebelumnya: register({required email, required password})
-      // Name & location kamu bisa disimpan ke Firestore setelah ini (TODO).
       final auth = ref.read(authProvider.notifier);
       await auth.register(email: email, password: pw);
-
       if (!mounted) return;
-
-      // Jika AuthNotifier.register sudah otomatis kirim verifikasi (iya),
-      // langsung bawa user ke halaman Verify.
       Navigator.pushReplacementNamed(context, Routes.verify);
     } on Exception catch (e) {
       _show('Gagal', e.toString());
@@ -176,7 +169,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
                 SizedBox(height: 18 * s),
 
-                // === Password (dengan icon mata) ===
+                // === Password ===
                 Text(
                   'Password',
                   style: TextStyle(
@@ -299,7 +292,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
                 SizedBox(height: 16 * s),
 
-                // === Google Sign-in (placeholder) ===
+                // === Google Sign-in ===
                 SizedBox(
                   height: 56 * s,
                   child: OutlinedButton(
@@ -343,7 +336,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     );
   }
 
-  // Helper field bulat bersih
+  // Helper field
   Widget _roundedField({
     required TextEditingController controller,
     required String hint,

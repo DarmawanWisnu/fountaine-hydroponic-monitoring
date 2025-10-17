@@ -1,4 +1,3 @@
-// lib/providers/auth/auth_exceptions.dart
 class UserNotFoundAuthException implements Exception {
   final String message;
   UserNotFoundAuthException([this.message = 'User not found']);

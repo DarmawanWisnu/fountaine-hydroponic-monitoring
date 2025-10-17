@@ -1,9 +1,3 @@
-// Riverpod providers untuk Firebase Auth:
-// - firebaseAuthProvider        : instance FirebaseAuth
-// - authServiceProvider         : wrapper AuthService
-// - authStateProvider (Stream)  : stream User? (buat AuthGate)
-// - authProvider (StateNotifier): expose method signIn/register/signOut dll
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/legacy.dart';
@@ -69,7 +63,7 @@ class AuthNotifier extends StateNotifier<User?> {
   }
 }
 
-// Provider StateNotifier: inilah yang dipakai oleh UI (notifier + state User?)
+// Provider StateNotifier
 final authProvider = StateNotifierProvider<AuthNotifier, User?>((ref) {
   final service = ref.read(authServiceProvider);
   return AuthNotifier(service);

@@ -2,7 +2,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'kit_provider.dart';
 
-// --- Model kecil, ga perlu file terpisah
 class NotificationItem {
   final String id;
   final String level; // info | warning | urgent
@@ -91,7 +90,7 @@ class NotificationListNotifier extends StateNotifier<List<NotificationItem>> {
   void add(NotificationItem n) => state = [n, ...state];
 }
 
-// --- Provider utama (otomatis tarik nama kit dari kitListProvider)
+// --- Provider utama
 final notificationListProvider =
     StateNotifierProvider<NotificationListNotifier, List<NotificationItem>>((
       ref,
@@ -100,7 +99,7 @@ final notificationListProvider =
       return NotificationListNotifier(ref, kits);
     });
 
-// helper selector buat filter di UI (tanpa fungsi tambahan di Notifier)
+// helper selector buat filter di UI
 final filteredNotificationProvider =
     Provider.family<List<NotificationItem>, String?>((ref, level) {
       final list = ref.watch(notificationListProvider);

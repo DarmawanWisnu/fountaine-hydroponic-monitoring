@@ -1,4 +1,3 @@
-// lib/domain/telemetry.dart
 class Telemetry {
   final DateTime ts;
   final double ppm;

@@ -1,4 +1,3 @@
-// lib/providers/mqtt_provider.dart
 import 'package:flutter/foundation.dart';
 import 'package:fountaine/services/mqtt_service.dart';
 

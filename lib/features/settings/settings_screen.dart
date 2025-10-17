@@ -1,4 +1,3 @@
-// lib/screens/settings/settings_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -26,7 +25,7 @@ class SettingsScreen extends ConsumerWidget {
           ),
           TextButton(
             onPressed: () async {
-              Navigator.pop(context); // close dialog first
+              Navigator.pop(context);
               try {
                 // FIX: pakai signOut() beneran dari authProvider.notifier
                 await ref.read(authProvider.notifier).signOut();
@@ -129,7 +128,7 @@ class SettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = MediaQuery.of(context).size.width / 375.0;
-    final user = ref.watch(authProvider); // User? dari Firebase
+    final user = ref.watch(authProvider);
 
     final email = user?.email ?? '—';
     final name =
@@ -179,7 +178,7 @@ class SettingsScreen extends ConsumerWidget {
 
               SizedBox(height: 20 * s),
 
-              // Account Header (tampilkan user yang login)
+              // Account Header
               Container(
                 padding: EdgeInsets.all(16 * s),
                 decoration: BoxDecoration(
@@ -336,8 +335,6 @@ class SettingsScreen extends ConsumerWidget {
               ),
 
               SizedBox(height: 12 * s),
-
-              // App Version (static; bisa kamu ganti package_info_plus kalau mau dinamis)
               Center(
                 child: Text(
                   'Version 1.0.0',

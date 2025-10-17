@@ -68,7 +68,7 @@ build/
 flutter_export_environment.sh
 
 # ===========================
-# 🔗 MQTT CONFIG (HiveMQ Cloud)
+# MQTT CONFIG (HiveMQ Cloud)
 # ===========================
 MQTT_HOST=your-hivemq-broker.s2.eu.hivemq.cloud
 MQTT_PORT=8883
@@ -77,7 +77,7 @@ MQTT_PASSWORD=your_hivemq_pass
 MQTT_CLIENT_PREFIX=fountaine-app-
 
 # ===========================
-# 🌱 APP CONFIG
+# APP CONFIG
 # ===========================
 DEFAULT_KIT_ID=devkit-01
 ROLLUP_MINUTES=30

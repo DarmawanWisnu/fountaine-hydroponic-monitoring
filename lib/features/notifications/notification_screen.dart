@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/provider/notification_provider.dart';
-import '../../models/nav_args.dart'; // ← pakai argumen route dari satu sumber
+import '../../models/nav_args.dart';
 
 class NotificationScreen extends ConsumerStatefulWidget {
   const NotificationScreen({super.key});
@@ -26,22 +26,15 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Ambil list notifikasi sesuai filter yang dipilih.
     final list = ref.watch(filteredNotificationProvider(_filter));
-    // Notifier untuk aksi seperti markRead/markAllRead.
     final notifier = ref.read(notificationListProvider.notifier);
 
     return Scaffold(
-      // ===== Scaffold: kerangka utama halaman =====
       backgroundColor: const Color(0xFFF3F9F4),
-
-      // ===== AppBar: judul + back + bell (route ke History) =====
       appBar: AppBar(
         backgroundColor: const Color(0xFFF3F9F4),
         elevation: 0,
         centerTitle: true,
-
-        // Tombol kembali ke halaman sebelumnya.
         leading: IconButton(
           icon: const Icon(
             Icons.arrow_back_ios_new_rounded,
@@ -71,7 +64,7 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> {
               Navigator.pushNamed(
                 context,
                 '/history',
-                arguments: const HistoryRouteArgs(), // buka history umum
+                arguments: const HistoryRouteArgs(),
               );
             },
           ),

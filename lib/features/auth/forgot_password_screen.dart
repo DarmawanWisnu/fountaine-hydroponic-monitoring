@@ -15,7 +15,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   final _emailCtrl = TextEditingController();
   bool _isSending = false;
 
-  // Validator email sederhana (biar nggak tergantung utils lain)
+  // Validator email sederhana
   String? _validateEmail(String? v) {
     if (v == null || v.trim().isEmpty) return 'Email tidak boleh kosong';
     final email = v.trim();
@@ -47,7 +47,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
             TextButton(
               onPressed: () {
                 Navigator.of(ctx).pop();
-                Navigator.of(context).maybePop(); // kembali ke login
+                Navigator.of(context).maybePop();
               },
               child: const Text('Oke'),
             ),
@@ -75,7 +75,6 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      // AppBar transparan biar nyatu sama gradient
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
@@ -166,8 +165,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                       padding: const EdgeInsets.all(18),
                       child: Form(
                         key: _formKey,
-                        onChanged: () =>
-                            setState(() {}), // enable/disable tombol dinamis
+                        onChanged: () => setState(() {}),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [

@@ -1,4 +1,3 @@
-// lib/screens/profile/profile_screen.dart
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -16,11 +15,8 @@ class ProfileScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Ambil user Firebase dari authProvider (User? dari StateNotifier)
-    final user = ref.watch(authProvider); // User? (null kalau belum login)
-
-    // Ambil daftar kit dari provider milikmu
-    final kits = ref.watch(kitListProvider); // List<Kit>
+    final user = ref.watch(authProvider);
+    final kits = ref.watch(kitListProvider);
 
     // --- Mapping field Firebase User ---
     final email = user?.email ?? '-';
@@ -31,15 +27,14 @@ class ProfileScreen extends ConsumerWidget {
         : (email != '-' ? email.split('@').first : 'Profile');
     final name = inferredName;
 
-    // --- Ambil kit info kalau ada ---
+    // --- Ambil kit info ---
     final kitName = kits.isNotEmpty ? kits.first.name : 'Your Kit Name';
     final kitId = kits.isNotEmpty ? kits.first.id : 'SUF-XXXX-XXXX';
 
     final s = MediaQuery.of(context).size.width / 375.0;
 
-    // Optional: tombol debug untuk seed kit dummy saat develop
     Future<void> seedDummy() async {
-      if (!kDebugMode) return; // hanya aktif di debug
+      if (!kDebugMode) return;
       try {
         if (kits.isEmpty) {
           await ref
@@ -156,7 +151,7 @@ class ProfileScreen extends ConsumerWidget {
 
               const Spacer(),
 
-              // ===== Edit Profile (sementara arahkan ke Settings) =====
+              // ===== Edit Profile =====
               SizedBox(
                 width: double.infinity,
                 height: 52 * s,
@@ -185,9 +180,7 @@ class ProfileScreen extends ConsumerWidget {
               Center(
                 child: OutlinedButton(
                   onPressed: () async {
-                    await ref
-                        .read(authProvider.notifier)
-                        .signOut(); // <-- BENER: signOut()
+                    await ref.read(authProvider.notifier).signOut();
                     if (context.mounted) {
                       Navigator.pushNamedAndRemoveUntil(
                         context,
@@ -220,7 +213,7 @@ class ProfileScreen extends ConsumerWidget {
 
               const SizedBox(height: 10),
 
-              // ===== Debug: seed dummy kit (aktif cuma di debug mode) =====
+              // ===== Debug: seed dummy kit =====
               if (kDebugMode)
                 Center(
                   child: TextButton(

@@ -1,11 +1,10 @@
-// ⚙️ Firebase configuration loader (ENV-based version)
+// Firebase configuration loader (ENV-based version)
 
 import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
-/// Default [FirebaseOptions] untuk aplikasi Fountaine.
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
@@ -38,7 +37,7 @@ class DefaultFirebaseOptions {
     }
   }
 
-  /// 🔒 Ambil konfigurasi dari file `.env`
+  /// Ambil konfigurasi dari file `.env`
   /// Jika `.env` tidak ditemukan atau kosong, akan lempar error
   static FirebaseOptions _fromEnv({required bool isIOS}) {
     // Pastikan dotenv sudah dimuat sebelum dipanggil

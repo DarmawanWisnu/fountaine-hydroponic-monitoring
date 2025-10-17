@@ -73,7 +73,7 @@ class _SplashScreenState extends State<SplashScreen>
 
             // 🌱 Logo dan teks di atas karakter
             Positioned(
-              top: screen.height * 0.08, // dinaikin lebih jauh lagi
+              top: screen.height * 0.08,
               left: 0,
               right: 0,
               child: FadeTransition(
@@ -100,7 +100,6 @@ class _SplashScreenState extends State<SplashScreen>
                         letterSpacing: -0.5,
                       ),
                     ),
-                    // ✨ Jarak ekstra yang lebih besar biar “Loading...” gak nempel rambut
                     SizedBox(height: 22 * s),
 
                     // Teks “Loading...”

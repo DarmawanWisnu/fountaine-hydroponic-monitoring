@@ -36,7 +36,6 @@ class _AddKitScreenState extends ConsumerState<AddKitScreen> {
     setState(() => _loading = true);
 
     try {
-      // asumsi: kitListProvider.notifier memiliki method addKit(Kit)
       await ref.read(kitListProvider.notifier).addKit(Kit(id: id, name: name));
 
       if (!mounted) return;
@@ -56,10 +55,8 @@ class _AddKitScreenState extends ConsumerState<AddKitScreen> {
           ],
         ),
       );
-      // kembali ke home
       Navigator.pushReplacementNamed(context, Routes.home);
     } catch (e) {
-      // tampilkan error sederhana
       if (!mounted) return;
       showDialog(
         context: context,

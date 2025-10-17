@@ -1,36 +1,10 @@
-// lib/screens/monitor/monitor_screen.dart
-// -----------------------------------------------------------------------------
-// Layar "Dashboard / Monitor" untuk menampilkan pH, PPM, Humidity, Temperature,
-// memilih Kit aktif, switch Auto/Manual, dan tombol kontrol manual.
-//
-// Catatan penting:
-// - File ini sengaja NETRAL: bisa jalan pakai dummy (Simulated) atau Live (MQTT).
-// - Data Kit diambil dari kit_provider (List<Kit> + update periodic).
-// - Param 'kitId' dan 'simulated' dikirim dari routes.dart via MonitorArgs.
-//
-// Cara kerja singkat:
-//   initState ->
-//     jika simulated == true: seedDummy() + simulateSensorUpdate() tiap 5 dtk
-//     jika simulated == false: anggap data disuplai provider dari MQTT
-//   build -> ambil kits dari provider -> render gauges + card + controls
-//
-// TODO wiring (kalau sudah siap):
-// - Hubungkan tombol manual ke MqttService.publishControl()
-// - Tambah alert engine (Card E) untuk notifikasi
-// -----------------------------------------------------------------------------
-
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
-// Provider kits kamu (pastikan path sesuai proyekmu)
 import '../../providers/provider/kit_provider.dart';
 
 class MonitorScreen extends ConsumerStatefulWidget {
-  /// Kit yang diinginkan saat membuka layar (fallback ke first kit kalau kosong).
   final String kitId;
-
-  /// true: pakai dummy generator; false: pakai data live (MQTT/real stream).
   final bool simulated;
 
   const MonitorScreen({
@@ -47,10 +21,10 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen> {
   // Timer untuk update dummy tiap 5 detik saat simulated == true
   Timer? _timer;
 
-  // Default: Manual ON (sesuai permintaan)
+  // Default: Manual ON
   bool _manual = true;
 
-  // ID Kit yang sedang dipilih (pakai id biar stabil saat urutan list berubah)
+  // ID Kit yang sedang dipilih
   String? _selectedKitId;
 
   // Flag internal: jika true, paksa simulasi (auto fallback saat data kosong)
@@ -86,7 +60,7 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen> {
 
   bool get _isSimulated => widget.simulated || _forceSimulated;
 
-  // ... (header & imports sama persis punyamu)
+  // Header
   @override
   void initState() {
     super.initState();
@@ -94,7 +68,7 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
-        // AUTO-FALLBACK: kalau simulated==false tapi data kosong, tetap jalankan sim.
+        // AUTO-FALLBACK: kalau simulated==false
         final hasData = ref.read(kitListProvider).isNotEmpty;
         final needSim = widget.simulated || !hasData;
 
@@ -107,12 +81,9 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen> {
           _selectedKitId = ks.first.id;
           if (mounted) setState(() {});
         }
-      } catch (_) {
-        /* swallow */
-      }
+      } catch (_) {}
     });
   }
-  // ... (SELURUH kode lain monitor tetap sama; tidak ada Timer lokal lagi)
 
   @override
   void dispose() {
@@ -125,32 +96,27 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen> {
   // =======================
   @override
   Widget build(BuildContext context) {
-    // Ambil data kit terkini dari provider
     final kits = ref.watch(kitListProvider);
 
-    // Palet warna
     const bg = Color(0xFFF6FBF6);
     const primary = Color(0xFF154B2E);
     const muted = Color(0xFF7A7A7A);
 
-    // Skala responsif sederhana berdasarkan lebar 375
     final size = MediaQuery.of(context).size;
     final s = size.width / 375.0;
 
-    // Helper membaca nilai sensor dari model Kit (mendukung shape dinamis)
     double readSensor(Kit? kit, String key) {
       if (kit == null) return 0;
       try {
         final dyn = kit as dynamic;
 
-        // Prefer schema bersarang: kit.sensors['ppm'|'ph'|'humidity'|'temperature']
         if (dyn.sensors != null && dyn.sensors[key] != null) {
           final v = dyn.sensors[key];
           if (v is num) return v.toDouble();
           if (v is String) return double.tryParse(v) ?? 0;
         }
 
-        // Fallback: properti langsung
+        // Fallback
         if (key == 'ph' && dyn.ph != null) return (dyn.ph as num).toDouble();
         if (key == 'ppm' && dyn.ppm != null) return (dyn.ppm as num).toDouble();
         if (key == 'humidity' && dyn.humidity != null) {
@@ -159,13 +125,10 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen> {
         if (key == 'temperature' && dyn.temperature != null) {
           return (dyn.temperature as num).toDouble();
         }
-      } catch (_) {
-        /* swallow */
-      }
+      } catch (_) {}
       return 0;
     }
 
-    // Normalisasi angka -> 0..1 untuk progress arc
     double frac(String key, double v) {
       switch (key) {
         case 'ph':
@@ -181,7 +144,7 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen> {
       }
     }
 
-    // Widget "gauge" (arc animasi + nilai + label)
+    // Widget "gauge"
     Widget gauge({
       required String label,
       required double value,
@@ -232,7 +195,7 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen> {
             ),
             SizedBox(height: 6 * s),
 
-            // Nilai + unit (contoh: 6.02 pH)
+            // Nilai + unit
             Row(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.end,
@@ -269,7 +232,7 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen> {
       );
     }
 
-    // Data sensor terpilih
+    // Data sensor
     final Kit? base = _getSelectedKit(kits);
     final ph = readSensor(base, 'ph');
     final ppm = readSensor(base, 'ppm');
@@ -280,7 +243,7 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen> {
     return Scaffold(
       backgroundColor: bg,
 
-      // AppBar: tampilkan mode + badge kecil (tanpa kitId di judul, sesuai permintaan)
+      // AppBar: tampilkan mode + badge kecil
       appBar: AppBar(
         backgroundColor: bg,
         elevation: 0,
@@ -378,7 +341,7 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen> {
               ),
               SizedBox(height: 10 * s),
 
-              // Card + picker bottom sheet untuk ganti Kit
+              // Card + picker bottom sheet
               InkWell(
                 onTap: kits.length <= 1
                     ? null
@@ -684,7 +647,7 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen> {
     );
   }
 
-  /// Tombol kontrol reusable dengan lebar adaptif
+  /// Tombol kontrol
   Widget _controlBtn(
     String text,
     Color primary,
@@ -692,7 +655,6 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen> {
     bool wide = false,
     VoidCallback? onTap,
   }) {
-    // width adaptif: 48% layar utk dua kolom; tombol refill bisa lebar penuh.
     final screenW = MediaQuery.of(context).size.width;
     final maxW = wide
         ? screenW - (16 * s * 2)
@@ -745,14 +707,10 @@ class _ArcPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final stroke = size.width * strokeFactor;
-
-    // Background arc tipis (full circle)
     final bg = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke
       ..color = const Color(0xFFF0F0F0);
-
-    // Foreground arc (progress)
     final fg = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke
