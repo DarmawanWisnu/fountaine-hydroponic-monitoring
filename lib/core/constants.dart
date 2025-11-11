@@ -7,6 +7,7 @@ class AppConst {
   static String get defaultKitId => dotenv.env['DEFAULT_KIT_ID'] ?? 'devkit-01';
   static bool get simulatedMode =>
       (dotenv.env['SIMULATED_MODE'] ?? 'false').toLowerCase() == 'true';
+
   static String formatDateTime(DateTime? dt) {
     if (dt == null) return "-";
     return DateFormat("yyyy-MM-dd HH:mm:ss").format(dt.toLocal());
@@ -14,17 +15,18 @@ class AppConst {
 }
 
 /// ===========================================================================
-/// 🔗 MQTT CONFIGURATION (HiveMQ Cloud)
+/// 🔗 MQTT CONFIGURATION (Local Broker)
 /// ===========================================================================
 class MqttConst {
-  static String get host => dotenv.env['MQTT_HOST'] ?? 'localhost';
+  // ✅ emulator → host PC pakai ini
+  static String get host => dotenv.env['MQTT_HOST'] ?? '10.0.2.2';
   static int get port =>
       int.tryParse(dotenv.env['MQTT_PORT'] ?? '1883') ?? 1883;
   static String get username => dotenv.env['MQTT_USERNAME'] ?? 'guest';
   static String get password => dotenv.env['MQTT_PASSWORD'] ?? 'guest';
   static String get clientPrefix =>
       dotenv.env['MQTT_CLIENT_PREFIX'] ?? 'fountaine-app-';
-  static const tls = true;
+  static const bool tls = false; // ⚠️ false karena broker lokal
 
   static String tTelemetry(String kitId) => "kit/$kitId/telemetry";
   static String tStatus(String kitId) => "kit/$kitId/status";
@@ -35,26 +37,23 @@ class MqttConst {
 /// 🌱 DEFAULT THRESHOLDS
 /// ===========================================================================
 class ThresholdConst {
-  static const ppmMin = 800.0;
-  static const ppmMax = 1100.0;
+  static const double ppmMin = 800.0;
+  static const double ppmMax = 1100.0;
 
-  static const phMin = 5.8;
-  static const phMax = 6.2;
+  static const double phMin = 5.8;
+  static const double phMax = 6.2;
 
-  static const tempMin = 20.0;
-  static const tempMax = 26.0;
+  static const double tempMin = 20.0;
+  static const double tempMax = 26.0;
 
-  static const wlMinPercent = 30.0;
-  static const wlMaxPercent = 90.0;
+  static const double wlMinPercent = 50.0;
+  static const double wlMaxPercent = 90.0;
 
-  static const hysteresisPercent = 5.0;
-  static const confirmSamples = 2;
-  static const alertCooldownMin = 5;
+  static const double hysteresisPercent = 5.0;
+  static const int confirmSamples = 2;
+  static const int alertCooldownMin = 5;
 }
 
-/// ===========================================================================
-/// ⚙️ LOCAL HIVE BOX & FIRESTORE PATHS
-/// ===========================================================================
 class HiveBoxConst {
   static const telemetry = "telemetry_box";
   static const thresholds = "threshold_box";

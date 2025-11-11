@@ -4,11 +4,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+
 import 'package:fountaine/firebase_options.dart';
 import 'package:fountaine/app/routes.dart';
+import 'package:fountaine/services/db_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // env
   try {
     await dotenv.load(fileName: ".env");
     debugPrint('[dotenv] Loaded successfully');
@@ -16,13 +20,16 @@ Future<void> main() async {
     debugPrint('[dotenv] Warning: failed to load .env → $e');
   }
 
-  // Firebase init
+  // Firebase
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await FirebaseAppCheck.instance.activate(
     androidProvider: kDebugMode
         ? AndroidProvider.debug
         : AndroidProvider.playIntegrity,
   );
+
+  // SQLite
+  await DatabaseService.instance.init();
 
   runApp(const ProviderScope(child: FountaineApp()));
 }
@@ -35,8 +42,6 @@ class FountaineApp extends StatelessWidget {
     return MaterialApp(
       title: 'Fountaine',
       debugShowCheckedModeBanner: false,
-
-      // THEME
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF65FFF0),
@@ -44,18 +49,10 @@ class FountaineApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      initialRoute:
-          Routes.notifications, // untuk testing, nanti ganti ke '/' (AuthGate)
-
-      // ROUTING
-      // AuthGate akan otomatis arahkan:
-      // - LoginScreen (belum login)
-      // - VerifyScreen (belum verif email)
-      // - HomeScreen (sudah login & verif)
-      // home: const AuthGate(),
+      // untuk testing langsung ke home/monitor; nanti bisa ganti ke AuthGate
+      initialRoute: Routes.monitor,
+      // home : const HomePage(),
       routes: Routes.routes,
-
-      // Route generator (untuk halaman yang butuh arguments: Monitor/History, dll)
       onGenerateRoute: onGenerateRoute,
     );
   }

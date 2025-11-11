@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
-
 import '../core/constants.dart';
 import '../domain/telemetry.dart';
 import '../domain/device_status.dart';
@@ -23,8 +22,8 @@ class MqttService {
   Timer? _reconnectTimer;
   String? _kitId;
 
-  Future<void> connect({String? kitId}) async {
-    _kitId = kitId ?? AppConst.defaultKitId;
+  Future<void> connect({required String kitId}) async {
+    _kitId = kitId;
     _connStateCtrl.add(MqttConnState.connecting);
 
     final clientId =
@@ -34,81 +33,146 @@ class MqttService {
           ..secure = MqttConst.tls
           ..logging(on: false)
           ..keepAlivePeriod = 30
-          ..onDisconnected = _onDisconnected;
+          ..autoReconnect = true; // ✅ enable auto reconnect
 
-    final connMess = MqttConnectMessage()
+    c.onDisconnected = _onDisconnected;
+    c.onConnected = () => _connStateCtrl.add(MqttConnState.connected);
+
+    final topicStatus = MqttConst.tStatus(kitId);
+    c.connectionMessage = MqttConnectMessage()
         .withClientIdentifier(clientId)
         .startClean()
-        .withWillTopic(MqttConst.tStatus(_kitId!))
+        .withWillTopic(topicStatus)
         .withWillMessage(
           jsonEncode({"online": false, "ts": DateTime.now().toIso8601String()}),
         )
         .withWillRetain()
         .withWillQos(MqttQos.atLeastOnce);
 
-    c.connectionMessage = connMess;
-
     try {
-      final status = await c.connect(MqttConst.username, MqttConst.password);
+      final status = await c.connect(
+        (MqttConst.username.isEmpty || MqttConst.username == 'guest')
+            ? null
+            : MqttConst.username,
+        (MqttConst.password.isEmpty || MqttConst.password == 'guest')
+            ? null
+            : MqttConst.password,
+      );
+
       if (status?.state != MqttConnectionState.connected) {
         _connStateCtrl.add(MqttConnState.error);
         c.disconnect();
         _scheduleReconnect();
         return;
       }
+
       _client = c;
       _connStateCtrl.add(MqttConnState.connected);
 
-      // Publish online status (retained)
-      _publish(MqttConst.tStatus(_kitId!), {
+      // publish status online
+      _publish(topicStatus, {
         "online": true,
         "ts": DateTime.now().toIso8601String(),
       }, retain: true);
 
-      // Subscriptions
-      c.subscribe(MqttConst.tTelemetry(_kitId!), MqttQos.atLeastOnce);
-      c.subscribe(MqttConst.tStatus(_kitId!), MqttQos.atLeastOnce);
+      final topicTelemetry = MqttConst.tTelemetry(kitId);
+
+      // ✅ SUBSCRIBE KEDUA TOPIK (telemetry + status)
+      c.subscribe(topicTelemetry, MqttQos.atLeastOnce);
+      c.subscribe(topicStatus, MqttQos.atLeastOnce);
 
       c.updates?.listen((events) {
         for (final ev in events) {
-          final rec = ev.payload as MqttPublishMessage;
+          final msg = ev.payload as MqttPublishMessage;
           final topic = ev.topic;
           final payload = MqttPublishPayload.bytesToStringAsString(
-            rec.payload.message,
+            msg.payload.message,
           );
 
-          try {
-            final Map<String, dynamic> j = jsonDecode(payload);
-            if (topic == MqttConst.tTelemetry(_kitId!)) {
-              _telemetryCtrl.add(Telemetry.fromJson(j));
-            } else if (topic == MqttConst.tStatus(_kitId!)) {
-              _statusCtrl.add(DeviceStatus.fromJson(j));
+          if (topic == topicTelemetry) {
+            try {
+              final data = jsonDecode(payload) as Map<String, dynamic>;
+              final telemetry = _parseTelemetry(data);
+              _telemetryCtrl.add(telemetry);
+            } catch (e, s) {
+              // 🔴 jangan telan error parsing telemetry
+              // ignore: avoid_print
+              print('MQTT telemetry parse error: $e\n$s\nPayload: $payload');
             }
-          } catch (_) {
-            // ignore bad json
+          } else if (topic == topicStatus) {
+            try {
+              _statusCtrl.add(
+                DeviceStatus.fromJson(
+                  jsonDecode(payload) as Map<String, dynamic>,
+                ),
+              );
+            } catch (e, s) {
+              // 🔴 jangan telan error parsing status
+              // ignore: avoid_print
+              print('MQTT status parse error: $e\n$s\nPayload: $payload');
+            }
           }
         }
       });
-    } catch (_) {
+    } catch (e, s) {
       _connStateCtrl.add(MqttConnState.error);
       _client?.disconnect();
+      // 🔴 log error connect biar ketahuan
+      // ignore: avoid_print
+      print('MQTT connect error: $e\n$s');
       _scheduleReconnect();
     }
   }
 
-  void _scheduleReconnect() {
-    _reconnectTimer?.cancel();
-    _reconnectTimer = Timer(
-      const Duration(seconds: 5),
-      () => connect(kitId: _kitId),
+  Telemetry _parseTelemetry(Map<String, dynamic> j) {
+    double toDouble(dynamic v, [double def = 0]) {
+      if (v == null) return def;
+      if (v is num) return v.toDouble();
+      if (v is String) return double.tryParse(v) ?? def;
+      return def;
+    }
+
+    int? toInt(dynamic v) {
+      if (v == null) return null;
+      if (v is int) return v;
+      if (v is num) return v.toInt();
+      if (v is String) return int.tryParse(v);
+      return null;
+    }
+
+    // === Sama persis dengan publisher.py ===
+    final map = <String, dynamic>{
+      "id": toInt(j["id"]),
+      "ppm": toDouble(j["ppm"] ?? j["TDS"]),
+      "ph": toDouble(j["ph"] ?? j["pH"]),
+      "tempC": toDouble(j["temperature"] ?? j["DHT_temp"]),
+      "humidity": toDouble(j["humidity"] ?? j["DHT_humidity"]),
+      "waterTemp": toDouble(j["waterTemp"] ?? j["water_temp"]),
+      "waterLevel": toDouble(j["waterLevel"] ?? j["water_level"]),
+      "pH_reducer": false,
+      "add_water": false,
+      "nutrients_adder": false,
+      "humidifier": false,
+      "ex_fan": false,
+      "isDefault": false,
+    };
+
+    return Telemetry.fromJson(map);
+  }
+
+  void _publish(String topic, Map<String, dynamic> obj, {bool retain = false}) {
+    final cli = _client;
+    if (cli == null) return;
+    final builder = MqttClientPayloadBuilder()..addUTF8String(jsonEncode(obj));
+    cli.publishMessage(
+      topic,
+      MqttQos.atLeastOnce,
+      builder.payload!,
+      retain: retain,
     );
   }
 
-  void _onDisconnected() {
-    _connStateCtrl.add(MqttConnState.disconnected);
-    _scheduleReconnect();
-  }
-
+  /// Buat kirim kontrol (biar provider gak error)
   Future<void> publishControl(
     String kitId,
     String cmd,
@@ -121,15 +185,18 @@ class MqttService {
     });
   }
 
-  void _publish(String topic, Map<String, dynamic> obj, {bool retain = false}) {
-    if (_client == null) return;
-    final builder = MqttClientPayloadBuilder()..addUTF8String(jsonEncode(obj));
-    _client!.publishMessage(
-      topic,
-      MqttQos.atLeastOnce,
-      builder.payload!,
-      retain: retain,
+  void _scheduleReconnect() {
+    _reconnectTimer?.cancel();
+    if (_kitId == null) return;
+    _reconnectTimer = Timer(
+      const Duration(seconds: 5),
+      () => connect(kitId: _kitId!),
     );
+  }
+
+  void _onDisconnected() {
+    _connStateCtrl.add(MqttConnState.disconnected);
+    _scheduleReconnect();
   }
 
   Future<void> disconnect() async {

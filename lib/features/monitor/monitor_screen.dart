@@ -1,40 +1,68 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/provider/kit_provider.dart';
+import '../../providers/provider/notification_provider.dart';
 
 class MonitorScreen extends ConsumerStatefulWidget {
   final String kitId;
-  final bool simulated;
-
-  const MonitorScreen({
-    super.key,
-    this.kitId = 'devkit-01',
-    this.simulated = false,
-  });
+  const MonitorScreen({super.key, this.kitId = 'devkit-01'});
 
   @override
   ConsumerState<MonitorScreen> createState() => _MonitorScreenState();
 }
 
 class _MonitorScreenState extends ConsumerState<MonitorScreen> {
-  // Timer untuk update dummy tiap 5 detik saat simulated == true
   Timer? _timer;
+  String? _selectedKitId;
+  DateTime? _lastAlertAt;
 
-  // Default: Manual ON
+  // switch mode
   bool _manual = true;
 
-  // ID Kit yang sedang dipilih
-  String? _selectedKitId;
+  @override
+  void initState() {
+    super.initState();
+    _selectedKitId = widget.kitId.isEmpty ? null : widget.kitId;
 
-  // Flag internal: jika true, paksa simulasi (auto fallback saat data kosong)
-  bool _forceSimulated = false;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        // FIX-1: pastikan gak ada listener lama sebelum connect ulang
+        final notifier = ref.read(kitListProvider.notifier);
+        await notifier.stopListening();
+        await notifier.listenFromMqtt(widget.kitId);
 
-  // =======================
-  // ---------- Helpers ----
-  // =======================
+        // FIX-2: paksa rebuild setiap kitListProvider berubah (biar grid update)
+        ref.listen<List<Kit>>(kitListProvider, (prev, next) {
+          if (mounted) setState(() {});
+        });
 
-  /// Dapatkan Kit yang sedang dipilih berdasarkan _selectedKitId.
+        final ks = ref.read(kitListProvider);
+        if (ks.isNotEmpty && _selectedKitId == null) {
+          _selectedKitId = ks.first.id;
+          if (mounted) setState(() {});
+        }
+
+        // cek threshold tiap 5 detik (buat kirim notif)
+        _timer ??= Timer.periodic(const Duration(seconds: 5), (_) {
+          final kits = ref.read(kitListProvider);
+          final k = _getSelectedKit(kits);
+          _checkThresholdAndNotify(k);
+        });
+      } catch (_) {}
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    // biarin: saat keluar halaman kita stop agar ga dobel listener
+    // ignore: discarded_futures
+    ref.read(kitListProvider.notifier).stopListening();
+    super.dispose();
+  }
+
   Kit? _getSelectedKit(List<Kit> kits) {
     if (kits.isEmpty) return null;
     if (_selectedKitId == null) return kits.first;
@@ -42,7 +70,6 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen> {
     return idx == -1 ? kits.first : kits[idx];
   }
 
-  /// Format timestamp "YYYY-MM-DD HH:mm:ss" (local time)
   String _formatLast(DateTime? dt) {
     if (dt == null) return '--';
     final d = dt.toLocal();
@@ -51,49 +78,11 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen> {
         '${two(d.hour)}:${two(d.minute)}:${two(d.second)}';
   }
 
-  /// Terhitung "baru" kalau ts <= 5 menit
   bool _recent(DateTime? last) =>
       last != null && DateTime.now().difference(last).inMinutes <= 5;
 
-  /// Online jika flag online == true dan lastUpdated "baru"
   bool _isOnline(Kit? k) => (k?.online ?? false) && _recent(k?.lastUpdated);
 
-  bool get _isSimulated => widget.simulated || _forceSimulated;
-
-  // Header
-  @override
-  void initState() {
-    super.initState();
-    _selectedKitId = widget.kitId.isEmpty ? null : widget.kitId;
-
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      try {
-        // AUTO-FALLBACK: kalau simulated==false
-        final hasData = ref.read(kitListProvider).isNotEmpty;
-        final needSim = widget.simulated || !hasData;
-
-        if (needSim) {
-          await ref.read(kitListProvider.notifier).ensureSimRunning();
-        }
-
-        final ks = ref.read(kitListProvider);
-        if (ks.isNotEmpty && _selectedKitId == null) {
-          _selectedKitId = ks.first.id;
-          if (mounted) setState(() {});
-        }
-      } catch (_) {}
-    });
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  // =======================
-  // ---------- UI ---------
-  // =======================
   @override
   Widget build(BuildContext context) {
     final kits = ref.watch(kitListProvider);
@@ -106,27 +95,20 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen> {
     final s = size.width / 375.0;
 
     double readSensor(Kit? kit, String key) {
-      if (kit == null) return 0;
-      try {
-        final dyn = kit as dynamic;
-
-        if (dyn.sensors != null && dyn.sensors[key] != null) {
-          final v = dyn.sensors[key];
-          if (v is num) return v.toDouble();
-          if (v is String) return double.tryParse(v) ?? 0;
-        }
-
-        // Fallback
-        if (key == 'ph' && dyn.ph != null) return (dyn.ph as num).toDouble();
-        if (key == 'ppm' && dyn.ppm != null) return (dyn.ppm as num).toDouble();
-        if (key == 'humidity' && dyn.humidity != null) {
-          return (dyn.humidity as num).toDouble();
-        }
-        if (key == 'temperature' && dyn.temperature != null) {
-          return (dyn.temperature as num).toDouble();
-        }
-      } catch (_) {}
-      return 0;
+      final t = kit?.telemetry;
+      if (t == null) return 0;
+      switch (key) {
+        case 'ph':
+          return t.ph;
+        case 'ppm':
+          return t.ppm;
+        case 'humidity':
+          return t.humidity;
+        case 'temperature':
+          return t.tempC;
+        default:
+          return 0;
+      }
     }
 
     double frac(String key, double v) {
@@ -144,7 +126,6 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen> {
       }
     }
 
-    // Widget "gauge"
     Widget gauge({
       required String label,
       required double value,
@@ -176,7 +157,6 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen> {
         padding: EdgeInsets.fromLTRB(12 * s, 12 * s, 12 * s, 10 * s),
         child: Column(
           children: [
-            // Arc progress
             SizedBox(
               width: box,
               height: box,
@@ -194,8 +174,6 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen> {
               ),
             ),
             SizedBox(height: 6 * s),
-
-            // Nilai + unit
             Row(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.end,
@@ -217,8 +195,6 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen> {
               ],
             ),
             SizedBox(height: 6 * s),
-
-            // Label sensor
             Text(
               label,
               style: TextStyle(
@@ -232,7 +208,6 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen> {
       );
     }
 
-    // Data sensor
     final Kit? base = _getSelectedKit(kits);
     final ph = readSensor(base, 'ph');
     final ppm = readSensor(base, 'ppm');
@@ -242,52 +217,23 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen> {
 
     return Scaffold(
       backgroundColor: bg,
-
-      // AppBar: tampilkan mode + badge kecil
       appBar: AppBar(
         backgroundColor: bg,
         elevation: 0,
         centerTitle: true,
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Dashboard',
-              style: TextStyle(color: primary, fontWeight: FontWeight.w800),
-            ),
-            if (_isSimulated) ...[
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Color(0xFFE8FFF3),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: Color(0xFF00C853)),
-                ),
-                child: const Text(
-                  'SIM',
-                  style: TextStyle(
-                    color: Color(0xFF00C853),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          ],
+        title: const Text(
+          'Dashboard',
+          style: TextStyle(color: primary, fontWeight: FontWeight.w800),
         ),
         iconTheme: const IconThemeData(color: primary),
       ),
-
       body: SafeArea(
         child: SingleChildScrollView(
           padding: EdgeInsets.fromLTRB(16 * s, 10 * s, 16 * s, 16 * s),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // =======================
-              // ---- Gauges Grid ------
-              // =======================
+              // ====== GAUGES ======
               GridView(
                 padding: EdgeInsets.zero,
                 shrinkWrap: true,
@@ -328,9 +274,7 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen> {
 
               SizedBox(height: 18 * s),
 
-              // =======================
-              // ---- Your Kit Card ----
-              // =======================
+              // ====== YOUR KIT ======
               Text(
                 'Your Kit',
                 style: TextStyle(
@@ -340,145 +284,62 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen> {
                 ),
               ),
               SizedBox(height: 10 * s),
-
-              // Card + picker bottom sheet
-              InkWell(
-                onTap: kits.length <= 1
-                    ? null
-                    : () async {
-                        final picked = await showModalBottomSheet<Kit>(
-                          context: context,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.vertical(
-                              top: Radius.circular(20 * s),
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18 * s),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.03),
+                      blurRadius: 8 * s,
+                      offset: Offset(0, 4 * s),
+                    ),
+                  ],
+                ),
+                padding: EdgeInsets.symmetric(
+                  horizontal: 14 * s,
+                  vertical: 12 * s,
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 10 * s,
+                      height: 10 * s,
+                      decoration: BoxDecoration(
+                        color: _isOnline(base)
+                            ? Colors.greenAccent.shade400
+                            : Colors.grey,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    SizedBox(width: 10 * s),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            base?.name ?? '—',
+                            style: TextStyle(
+                              fontSize: 15 * s,
+                              fontWeight: FontWeight.w700,
+                              color: primary,
                             ),
                           ),
-                          builder: (ctx) {
-                            return SafeArea(
-                              child: ListView.separated(
-                                padding: EdgeInsets.symmetric(vertical: 8 * s),
-                                itemCount: kits.length,
-                                separatorBuilder: (_, __) =>
-                                    const Divider(height: 1),
-                                itemBuilder: (_, i) {
-                                  final k = kits[i];
-                                  final isSel = k.id == _selectedKitId;
-                                  final onlineDot =
-                                      (k.online) && _recent(k.lastUpdated);
-
-                                  return ListTile(
-                                    leading: Icon(
-                                      isSel
-                                          ? Icons.radio_button_checked
-                                          : Icons.radio_button_unchecked,
-                                    ),
-                                    title: Text(
-                                      k.name,
-                                      style: TextStyle(
-                                        fontWeight: isSel
-                                            ? FontWeight.w700
-                                            : FontWeight.w500,
-                                      ),
-                                    ),
-                                    subtitle: Text(
-                                      'Last: ${_formatLast(k.lastUpdated)}',
-                                    ),
-                                    trailing: Container(
-                                      width: 10 * s,
-                                      height: 10 * s,
-                                      decoration: BoxDecoration(
-                                        color: onlineDot
-                                            ? Colors.greenAccent.shade400
-                                            : Colors.grey,
-                                        shape: BoxShape.circle,
-                                      ),
-                                    ),
-                                    onTap: () => Navigator.pop(ctx, k),
-                                  );
-                                },
-                              ),
-                            );
-                          },
-                        );
-
-                        if (picked != null && picked.id != _selectedKitId) {
-                          setState(() {
-                            _selectedKitId = picked.id;
-                            // TODO: kalau live, kamu bisa trigger load data kit ini dari MQTT di sini.
-                            // ref.read(kitListProvider.notifier).listenFromMqtt(picked.id);
-                          });
-                        }
-                      },
-                borderRadius: BorderRadius.circular(18 * s),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(18 * s),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.03),
-                        blurRadius: 8 * s,
-                        offset: Offset(0, 4 * s),
+                          SizedBox(height: 2 * s),
+                          Text(
+                            'Last: $lastText',
+                            style: TextStyle(fontSize: 12 * s, color: muted),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 14 * s,
-                    vertical: 12 * s,
-                  ),
-                  child: Row(
-                    children: [
-                      // indikator online/offline
-                      Container(
-                        width: 10 * s,
-                        height: 10 * s,
-                        decoration: BoxDecoration(
-                          color: _isOnline(base)
-                              ? Colors.greenAccent.shade400
-                              : Colors.grey,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      SizedBox(width: 10 * s),
-
-                      // nama kit + last updated
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              base?.name ?? '—',
-                              style: TextStyle(
-                                fontSize: 15 * s,
-                                fontWeight: FontWeight.w700,
-                                color: primary,
-                              ),
-                            ),
-                            SizedBox(height: 2 * s),
-                            Text(
-                              'Last: $lastText',
-                              style: TextStyle(fontSize: 12 * s, color: muted),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      // icon dropdown jika ada >1 kit
-                      if (kits.length > 1)
-                        const Icon(
-                          Icons.keyboard_arrow_down_rounded,
-                          color: primary,
-                        ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
 
               SizedBox(height: 16 * s),
 
-              // =======================
-              // ---- Mode Auto/Manual -
-              // =======================
+              // ====== MODE AUTO / MANUAL + TOMBOL ======
               Row(
                 children: [
                   Text(
@@ -505,7 +366,7 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen> {
                       borderRadius: BorderRadius.circular(6),
                     ),
                     side: const BorderSide(color: primary, width: 1.4),
-                    fillColor: WidgetStateProperty.resolveWith(
+                    fillColor: MaterialStateProperty.resolveWith(
                       (_) => !_manual ? const Color(0xFF00E676) : Colors.white,
                     ),
                     checkColor: Colors.white,
@@ -528,7 +389,7 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen> {
                       borderRadius: BorderRadius.circular(6),
                     ),
                     side: const BorderSide(color: primary, width: 1.4),
-                    fillColor: WidgetStateProperty.resolveWith(
+                    fillColor: MaterialStateProperty.resolveWith(
                       (_) => _manual ? const Color(0xFF00E676) : Colors.white,
                     ),
                     checkColor: Colors.white,
@@ -537,9 +398,6 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen> {
                 ],
               ),
 
-              // =======================
-              // ---- Manual Controls --
-              // =======================
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 250),
                 switchInCurve: Curves.easeOut,
@@ -563,71 +421,7 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen> {
                             ],
                           ),
                           SizedBox(height: 10 * s),
-
-                          // Buttons grid responsive
-                          Wrap(
-                            spacing: 12 * s,
-                            runSpacing: 12 * s,
-                            children: [
-                              _controlBtn(
-                                'pH Up',
-                                primary,
-                                s,
-                                onTap: () {
-                                  // TODO: publishControl('phUp', {'ms': 300});
-                                  // ref.read(mqttVMProvider).service.publishControl(_selectedKitId??widget.kitId, 'phUp', {'ms': 300});
-                                  _showSnack(
-                                    'pH Up sent${_isSimulated ? " (simulated)" : ""}',
-                                  );
-                                },
-                              ),
-                              _controlBtn(
-                                'pH Down',
-                                primary,
-                                s,
-                                onTap: () {
-                                  // TODO: publishControl('phDown', {'ms': 300});
-                                  _showSnack(
-                                    'pH Down sent${_isSimulated ? " (simulated)" : ""}',
-                                  );
-                                },
-                              ),
-                              _controlBtn(
-                                'Pump A',
-                                primary,
-                                s,
-                                onTap: () {
-                                  // TODO: publishControl('pumpAB', {'ms': 500});
-                                  _showSnack(
-                                    'Pump A sent${_isSimulated ? " (simulated)" : ""}',
-                                  );
-                                },
-                              ),
-                              _controlBtn(
-                                'Pump B',
-                                primary,
-                                s,
-                                onTap: () {
-                                  // TODO: publishControl('pumpAB', {'ms': 500});
-                                  _showSnack(
-                                    'Pump B sent${_isSimulated ? " (simulated)" : ""}',
-                                  );
-                                },
-                              ),
-                              _controlBtn(
-                                'Refill',
-                                primary,
-                                s,
-                                wide: true,
-                                onTap: () {
-                                  // TODO: publishControl('waterAdd', {'ms': 800});
-                                  _showSnack(
-                                    'Refill sent${_isSimulated ? " (simulated)" : ""}',
-                                  );
-                                },
-                              ),
-                            ],
-                          ),
+                          _modernControls(primary: primary, scale: s),
                         ],
                       )
                     : const SizedBox.shrink(),
@@ -639,71 +433,185 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen> {
     );
   }
 
-  // Snack kecil buat feedback tombol manual
+  void _checkThresholdAndNotify(Kit? k) {
+    if (k == null) return;
+    final t = k.telemetry;
+    if (t == null) return;
+
+    const phMin = 5.8, phMax = 6.8;
+    const ppmMax = 900.0;
+    final now = DateTime.now();
+    String? level, title, msg;
+
+    if (t.ppm > ppmMax) {
+      level = 'urgent';
+      title = 'Urgent';
+      msg = 'TDS ${t.ppm.toStringAsFixed(0)} ppm terlalu tinggi!';
+    } else if (t.ph < phMin || t.ph > phMax) {
+      level = 'warning';
+      title = 'Warning';
+      msg = 'pH ${t.ph.toStringAsFixed(2)} di luar rentang optimal.';
+    }
+
+    if (level != null &&
+        (_lastAlertAt == null ||
+            now.difference(_lastAlertAt!).inSeconds >= 8)) {
+      _lastAlertAt = now;
+      final n = NotificationItem(
+        id: now.millisecondsSinceEpoch.toString(),
+        level: level,
+        title: title!,
+        message: msg!,
+        timestamp: now,
+        kitName: k.name,
+      );
+      ref.read(notificationListProvider.notifier).add(n);
+    }
+  }
+
+  // ======= Modern Controls =======
+  Widget _modernControls({required Color primary, required double scale}) {
+    final s = scale;
+    final screenW = MediaQuery.of(context).size.width;
+    final itemW = (screenW - (16 * s * 2) - (12 * s)) / 2;
+
+    return Wrap(
+      spacing: 12 * s,
+      runSpacing: 12 * s,
+      children: [
+        _modernControlBtn(
+          width: itemW,
+          icon: Icons.trending_up_rounded,
+          label: 'pH Up',
+          primary: primary,
+          scale: s,
+          onTap: () {
+            HapticFeedback.selectionClick();
+            _showSnack('pH Up sent');
+          },
+        ),
+        _modernControlBtn(
+          width: itemW,
+          icon: Icons.trending_down_rounded,
+          label: 'pH Down',
+          primary: primary,
+          scale: s,
+          onTap: () {
+            HapticFeedback.selectionClick();
+            _showSnack('pH Down sent');
+          },
+        ),
+        _modernControlBtn(
+          width: itemW,
+          icon: Icons.water_drop_outlined,
+          label: 'Pump A',
+          primary: primary,
+          scale: s,
+          onTap: () {
+            HapticFeedback.lightImpact();
+            _showSnack('Pump A sent');
+          },
+        ),
+        _modernControlBtn(
+          width: itemW,
+          icon: Icons.water_drop,
+          label: 'Pump B',
+          primary: primary,
+          scale: s,
+          onTap: () {
+            HapticFeedback.lightImpact();
+            _showSnack('Pump B sent');
+          },
+        ),
+        _modernControlBtn(
+          width: screenW - (16 * s * 2),
+          icon: Icons.refresh_rounded,
+          label: 'Refill',
+          primary: primary,
+          scale: s,
+          isEmphasis: true,
+          onTap: () {
+            HapticFeedback.mediumImpact();
+            _showSnack('Refill sent');
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _modernControlBtn({
+    required double width,
+    required IconData icon,
+    required String label,
+    required Color primary,
+    required double scale,
+    bool isEmphasis = false,
+    VoidCallback? onTap,
+  }) {
+    final s = scale;
+
+    return SizedBox(
+      width: width,
+      height: 54 * s,
+      child: _GlassButton(
+        onTap: onTap,
+        radius: 18 * s,
+        padding: EdgeInsets.symmetric(horizontal: 14 * s),
+        gradient: isEmphasis
+            ? const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFF1E6C45), Color(0xFF154B2E)],
+              )
+            : const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFFFFFFFF), Color(0xFFF3F7F4)],
+              ),
+        borderColor: isEmphasis ? Colors.transparent : const Color(0xFFE6EEE8),
+        shadowColor: Colors.black.withOpacity(0.05),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 20 * s,
+              color: isEmphasis ? Colors.white : primary,
+            ),
+            SizedBox(width: 10 * s),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 14 * s,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.2,
+                color: isEmphasis ? Colors.white : primary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showSnack(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(msg), duration: const Duration(milliseconds: 900)),
     );
   }
-
-  /// Tombol kontrol
-  Widget _controlBtn(
-    String text,
-    Color primary,
-    double s, {
-    bool wide = false,
-    VoidCallback? onTap,
-  }) {
-    final screenW = MediaQuery.of(context).size.width;
-    final maxW = wide
-        ? screenW - (16 * s * 2)
-        : (screenW - (16 * s * 2) - (12 * s)) / 2;
-
-    return ConstrainedBox(
-      constraints: BoxConstraints(
-        minWidth: 140 * s,
-        maxWidth: maxW,
-        minHeight: 48 * s,
-      ),
-      child: ElevatedButton(
-        onPressed: onTap,
-        style: ElevatedButton.styleFrom(
-          elevation: 3,
-          backgroundColor: primary,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24 * s),
-          ),
-          padding: EdgeInsets.symmetric(horizontal: 16 * s, vertical: 14 * s),
-        ),
-        child: Text(
-          text,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 14 * s,
-            fontWeight: FontWeight.w700,
-            color: Colors.white,
-          ),
-        ),
-      ),
-    );
-  }
 }
 
-// ============================================================================
-// Custom painter untuk Arc "gauge"
-// ============================================================================
+// ===== Arc painter untuk gauge =====
 class _ArcPainter extends CustomPainter {
   final Color color;
-  final double fraction; // 0..1
+  final double fraction;
   final double strokeFactor;
-
   _ArcPainter({
     required this.color,
     required this.fraction,
     this.strokeFactor = 0.12,
   });
-
   @override
   void paint(Canvas canvas, Size size) {
     final stroke = size.width * strokeFactor;
@@ -716,13 +624,8 @@ class _ArcPainter extends CustomPainter {
       ..strokeWidth = stroke
       ..strokeCap = StrokeCap.round
       ..color = color;
-
     final rect = Rect.fromLTWH(0, 0, size.width, size.height);
-
-    // background full circle (light)
     canvas.drawArc(rect, 0, 3.1415926 * 2, false, bg);
-
-    // progress arc di bagian atas
     final start = 3.1415926 * 0.75;
     final sweepMax = 3.1415926 * 0.9;
     canvas.drawArc(rect, start, sweepMax * fraction.clamp(0, 1), false, fg);
@@ -733,4 +636,67 @@ class _ArcPainter extends CustomPainter {
       old.fraction != fraction ||
       old.color != color ||
       old.strokeFactor != strokeFactor;
+}
+
+// ===== Small glassy button =====
+class _GlassButton extends StatefulWidget {
+  final Widget child;
+  final VoidCallback? onTap;
+  final double radius;
+  final EdgeInsets padding;
+  final Gradient gradient;
+  final Color borderColor;
+  final Color shadowColor;
+
+  const _GlassButton({
+    required this.child,
+    required this.onTap,
+    required this.radius,
+    required this.padding,
+    required this.gradient,
+    required this.borderColor,
+    required this.shadowColor,
+  });
+
+  @override
+  State<_GlassButton> createState() => _GlassButtonState();
+}
+
+class _GlassButtonState extends State<_GlassButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedScale(
+      scale: _pressed ? 0.98 : 1.0,
+      duration: const Duration(milliseconds: 90),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        decoration: BoxDecoration(
+          gradient: widget.gradient,
+          borderRadius: BorderRadius.circular(widget.radius),
+          border: Border.all(color: widget.borderColor, width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: widget.shadowColor,
+              blurRadius: 12,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(widget.radius),
+            onTap: widget.onTap,
+            onHighlightChanged: (v) => setState(() => _pressed = v),
+            child: Padding(
+              padding: widget.padding,
+              child: Center(child: widget.child),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

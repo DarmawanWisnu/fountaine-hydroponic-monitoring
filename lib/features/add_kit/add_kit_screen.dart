@@ -43,9 +43,9 @@ class _AddKitScreenState extends ConsumerState<AddKitScreen> {
         context: context,
         builder: (_) => AlertDialog(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(16),
           ),
-          title: const Text('Sukses'),
+          title: const Text('Sukses 🎉'),
           content: const Text('Kit berhasil ditambahkan'),
           actions: [
             TextButton(
@@ -61,7 +61,10 @@ class _AddKitScreenState extends ConsumerState<AddKitScreen> {
       showDialog(
         context: context,
         builder: (_) => AlertDialog(
-          title: const Text('Gagal'),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text('Gagal 😣'),
           content: Text(e.toString()),
           actions: [
             TextButton(
@@ -90,139 +93,206 @@ class _AddKitScreenState extends ConsumerState<AddKitScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // back
+                // back button
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: CircleAvatar(
-                    backgroundColor: Colors.white,
-                    radius: 20 * s,
-                    child: IconButton(
-                      icon: Icon(
-                        Icons.arrow_back,
-                        color: _primaryColor,
-                        size: 20 * s,
+                  child: Material(
+                    color: Colors.white,
+                    shape: const CircleBorder(),
+                    elevation: 3,
+                    child: InkWell(
+                      customBorder: const CircleBorder(),
+                      onTap: () => Navigator.maybePop(context),
+                      child: Padding(
+                        padding: EdgeInsets.all(10 * s),
+                        child: Icon(
+                          Icons.arrow_back,
+                          color: _primaryColor,
+                          size: 20 * s,
+                        ),
                       ),
-                      onPressed: () => Navigator.maybePop(context),
                     ),
                   ),
                 ),
 
-                SizedBox(height: 24 * s),
+                SizedBox(height: 30 * s),
 
                 // Title
                 Text(
-                  'Add Kit!',
+                  'Add Kit',
                   style: TextStyle(
                     fontSize: 32 * s,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w900,
                     color: _primaryColor,
                   ),
                   textAlign: TextAlign.center,
                 ),
                 SizedBox(height: 6 * s),
                 Text(
-                  "Please Add Your Kit To Monitor!",
+                  "Add your hydroponic kit to start monitoring.",
                   style: TextStyle(fontSize: 14 * s, color: _mutedText),
                   textAlign: TextAlign.center,
                 ),
 
-                SizedBox(height: 28 * s),
+                SizedBox(height: 36 * s),
 
-                // Kit Name
-                Text(
-                  'Kit Name',
-                  style: TextStyle(
-                    fontSize: 16 * s,
-                    fontWeight: FontWeight.w700,
-                    color: _primaryColor,
-                  ),
+                // Input field reusable
+                _modernField(
+                  s: s,
+                  label: "Kit Name",
+                  hint: "e.g. Hydroponic Monitoring System",
+                  controller: _nameCtrl,
+                  validator: (v) => (v == null || v.trim().isEmpty)
+                      ? 'Nama kit wajib diisi'
+                      : null,
                 ),
-                SizedBox(height: 8 * s),
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(28 * s),
-                  ),
-                  child: TextFormField(
-                    controller: _nameCtrl,
-                    decoration: InputDecoration(
-                      hintText: 'e.g. Hydroponic Monitoring System',
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 20 * s,
-                        vertical: 18 * s,
-                      ),
-                    ),
-                    validator: (v) => (v == null || v.trim().isEmpty)
-                        ? 'Nama kit harus diisi'
-                        : null,
-                  ),
+                SizedBox(height: 20 * s),
+                _modernField(
+                  s: s,
+                  label: "Kit ID",
+                  hint: "e.g. SUF-UINJKT-HM-F2000",
+                  controller: _idCtrl,
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) {
+                      return 'ID Kit wajib diisi';
+                    }
+                    if (v.trim().length < 5) return 'ID Kit terlalu pendek';
+                    return null;
+                  },
                 ),
 
-                SizedBox(height: 18 * s),
+                SizedBox(height: 36 * s),
 
-                // Kit ID
-                Text(
-                  'Kit ID',
-                  style: TextStyle(
-                    fontSize: 16 * s,
-                    fontWeight: FontWeight.w700,
-                    color: _primaryColor,
-                  ),
-                ),
-                SizedBox(height: 8 * s),
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(28 * s),
-                  ),
-                  child: TextFormField(
-                    controller: _idCtrl,
-                    decoration: InputDecoration(
-                      hintText: 'e.g. SUF-UINJKT-HM-F2000',
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 20 * s,
-                        vertical: 18 * s,
-                      ),
-                    ),
-                    validator: (v) {
-                      if (v == null || v.trim().isEmpty) {
-                        return 'ID Kit harus diisi';
-                      }
-                      if (v.trim().length < 5) return 'ID Kit terlalu pendek';
-                      return null;
-                    },
-                  ),
-                ),
-
-                SizedBox(height: 28 * s),
-
-                // Save button
-                SizedBox(
-                  height: 56 * s,
-                  child: ElevatedButton(
-                    onPressed: _loading ? null : _save,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _primaryColor,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(40 * s),
-                      ),
-                      elevation: 4,
-                    ),
-                    child: _loading
-                        ? const CircularProgressIndicator(color: Colors.white)
-                        : Text(
-                            'Save',
-                            style: TextStyle(
-                              fontSize: 18 * s,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                  ),
+                // Save button modern
+                _modernSaveButton(
+                  s: s,
+                  label: 'Save Kit',
+                  loading: _loading,
+                  onTap: _loading ? null : _save,
                 ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _modernField({
+    required double s,
+    required String label,
+    required String hint,
+    required TextEditingController controller,
+    required String? Function(String?) validator,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 15 * s,
+            fontWeight: FontWeight.w700,
+            color: _primaryColor,
+          ),
+        ),
+        SizedBox(height: 8 * s),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16 * s),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 10 * s,
+                offset: Offset(0, 4 * s),
+              ),
+            ],
+          ),
+          child: TextFormField(
+            controller: controller,
+            validator: validator,
+            decoration: InputDecoration(
+              hintText: hint,
+              hintStyle: TextStyle(color: _mutedText.withOpacity(0.6)),
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.symmetric(
+                horizontal: 18 * s,
+                vertical: 16 * s,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _modernSaveButton({
+    required double s,
+    required String label,
+    required bool loading,
+    required VoidCallback? onTap,
+  }) {
+    return SizedBox(
+      height: 56 * s,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16 * s),
+        child: Ink(
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF1E6C45), Color(0xFF154B2E)],
+            ),
+            borderRadius: BorderRadius.circular(16 * s),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.15),
+                blurRadius: 16 * s,
+                offset: Offset(0, 6 * s),
+              ),
+            ],
+          ),
+          child: Center(
+            child: loading
+                ? Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2.5,
+                        ),
+                      ),
+                      SizedBox(width: 10 * s),
+                      Text(
+                        "Saving...",
+                        style: TextStyle(
+                          fontSize: 16 * s,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  )
+                : Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.save_rounded, color: Colors.white),
+                      SizedBox(width: 8 * s),
+                      Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 16 * s,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
           ),
         ),
       ),

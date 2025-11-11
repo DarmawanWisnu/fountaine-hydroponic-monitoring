@@ -70,8 +70,8 @@ flutter_export_environment.sh
 # ===========================
 # MQTT CONFIG (HiveMQ Cloud)
 # ===========================
-MQTT_HOST=your-hivemq-broker.s2.eu.hivemq.cloud
-MQTT_PORT=8883
+MQTT_HOST=localhost
+MQTT_PORT=1883
 MQTT_USERNAME=your_hivemq_user
 MQTT_PASSWORD=your_hivemq_pass
 MQTT_CLIENT_PREFIX=fountaine-app-
@@ -82,3 +82,10 @@ MQTT_CLIENT_PREFIX=fountaine-app-
 DEFAULT_KIT_ID=devkit-01
 ROLLUP_MINUTES=30
 SIMULATED_MODE=false
+
+# ===========================
+# Documentation
+# ===========================
+
+docs/
+docs/icd.md
