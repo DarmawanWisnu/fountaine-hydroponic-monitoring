@@ -1,5 +1,3 @@
----
-
 # **Fountaine**
 
 *Hydroponic Monitoring App — Flutter + Firebase + MQTT*
