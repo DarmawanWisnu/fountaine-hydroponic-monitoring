@@ -131,13 +131,19 @@ class KitListNotifier extends StateNotifier<List<Kit>> {
       await _save();
     }
 
-    if (_currentKitId != null && _currentKitId != kitId) await stopListening();
+    // Ganti kit -> stop listener lama
+    if (_currentKitId != null && _currentKitId != kitId) {
+      await stopListening();
+    }
     _currentKitId = kitId;
 
     await _mqtt.connect(kitId: kitId);
+    print('[KIT] AFTER CONNECT for $kitId');
 
+    print('[KIT] LISTENER ATTACHED for $kitId');
     _telemetrySub = _mqtt.telemetry$(kitId).listen((t) async {
-      // update UI realtime
+      print('[KIT] GOT MQTT PAYLOAD: ${t.toJson()}');
+
       state = [
         for (final k in state)
           k.id == kitId
@@ -166,12 +172,13 @@ class KitListNotifier extends StateNotifier<List<Kit>> {
     });
   }
 
+  // ❗❗ STOP LISTENER TANPA MEMATIKAN MQTT
   Future<void> stopListening() async {
     await _telemetrySub?.cancel();
     await _statusSub?.cancel();
     _telemetrySub = null;
     _statusSub = null;
-    await _mqtt.dispose();
+    // → MQTT tetap hidup.
   }
 
   // ---------------- PRUNING 7 HARI @ 05:00 ----------------
@@ -199,7 +206,7 @@ class KitListNotifier extends StateNotifier<List<Kit>> {
 
   @override
   void dispose() {
-    stopListening();
+    // ❗ Jangan stop MQTT, biarkan global
     _pruneTimer?.cancel();
     super.dispose();
   }

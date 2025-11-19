@@ -18,25 +18,27 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen> {
   String? _selectedKitId;
   DateTime? _lastAlertAt;
 
-  // switch mode
   bool _manual = true;
+
+  ProviderSubscription<List<Kit>>? _kitListener;
 
   @override
   void initState() {
     super.initState();
     _selectedKitId = widget.kitId.isEmpty ? null : widget.kitId;
 
+    // ====== FIX: listener pindah ke sini ======
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _kitListener = ref.listenManual<List<Kit>>(kitListProvider, (prev, next) {
+        if (!mounted) return;
+        setState(() {});
+      });
+    });
+
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
-        // FIX-1: pastikan gak ada listener lama sebelum connect ulang
         final notifier = ref.read(kitListProvider.notifier);
-        await notifier.stopListening();
-        await notifier.listenFromMqtt(widget.kitId);
-
-        // FIX-2: paksa rebuild setiap kitListProvider berubah (biar grid update)
-        ref.listen<List<Kit>>(kitListProvider, (prev, next) {
-          if (mounted) setState(() {});
-        });
+        notifier.listenFromMqtt(widget.kitId);
 
         final ks = ref.read(kitListProvider);
         if (ks.isNotEmpty && _selectedKitId == null) {
@@ -44,22 +46,25 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen> {
           if (mounted) setState(() {});
         }
 
-        // cek threshold tiap 5 detik (buat kirim notif)
         _timer ??= Timer.periodic(const Duration(seconds: 5), (_) {
           final kits = ref.read(kitListProvider);
           final k = _getSelectedKit(kits);
           _checkThresholdAndNotify(k);
         });
-      } catch (_) {}
+      } catch (e) {
+        print("Error init dashboard: $e");
+      }
     });
   }
 
   @override
   void dispose() {
     _timer?.cancel();
-    // biarin: saat keluar halaman kita stop agar ga dobel listener
-    // ignore: discarded_futures
-    ref.read(kitListProvider.notifier).stopListening();
+
+    // ====== FIX: amanin cleanup ======
+    _kitListener?.close();
+    _kitListener = null;
+
     super.dispose();
   }
 

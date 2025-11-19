@@ -62,7 +62,7 @@ class Telemetry {
 
   factory Telemetry.fromJson(Map<String, dynamic> j) => Telemetry(
     id: _toInt(j['id']),
-    ppm: _toDouble(j['TDS'] ?? j['tds']),
+    ppm: _toDouble(j['ppm'] ?? j['TDS'] ?? j['tds']),
     ph: _toDouble(j['pH'] ?? j['ph']),
     tempC: _toDouble(j['DHT_temp'] ?? j['tempC']),
     humidity: _toDouble(j['DHT_humidity'] ?? j['humidity']),

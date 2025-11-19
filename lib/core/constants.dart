@@ -4,7 +4,10 @@ import 'package:intl/intl.dart';
 class AppConst {
   static int get rollupMinutes =>
       int.tryParse(dotenv.env['ROLLUP_MINUTES'] ?? '30') ?? 30;
+
+  // Default kit ID harus sama kayak di publisher.py
   static String get defaultKitId => dotenv.env['DEFAULT_KIT_ID'] ?? 'devkit-01';
+
   static bool get simulatedMode =>
       (dotenv.env['SIMULATED_MODE'] ?? 'false').toLowerCase() == 'true';
 
@@ -14,28 +17,33 @@ class AppConst {
   }
 }
 
-/// ===========================================================================
-/// 🔗 MQTT CONFIGURATION (Local Broker)
-/// ===========================================================================
+/// MQTT CONFIGURATION (Local Broker - cocok sama publisher.py)
+
 class MqttConst {
-  // ✅ emulator → host PC pakai ini
+  // Ganti IP di bawah ini pakai IP laptop/server kamu
+  // kalau kamu jalanin broker di laptop yang sama, jangan pakai 'localhost'
+  // Emulator Android: pakai '10.0.2.2'
+  // HP fisik: pakai IP LAN, contoh '192.168.0.12'
   static String get host => dotenv.env['MQTT_HOST'] ?? '10.0.2.2';
+
   static int get port =>
       int.tryParse(dotenv.env['MQTT_PORT'] ?? '1883') ?? 1883;
-  static String get username => dotenv.env['MQTT_USERNAME'] ?? 'guest';
-  static String get password => dotenv.env['MQTT_PASSWORD'] ?? 'guest';
-  static String get clientPrefix =>
-      dotenv.env['MQTT_CLIENT_PREFIX'] ?? 'fountaine-app-';
-  static const bool tls = false; // ⚠️ false karena broker lokal
 
+  static String get username => dotenv.env['MQTT_USERNAME'] ?? '';
+  static String get password => dotenv.env['MQTT_PASSWORD'] ?? '';
+  static String get clientPrefix =>
+      dotenv.env['MQTT_CLIENT_PREFIX'] ?? 'hydro-app-';
+
+  static const bool tls = false; // broker lokal jadi non-TLS aja
+
+  // Samain topik biar cocok sama publisher.py
   static String tTelemetry(String kitId) => "kit/$kitId/telemetry";
   static String tStatus(String kitId) => "kit/$kitId/status";
   static String tControl(String kitId) => "kit/$kitId/control";
 }
 
-/// ===========================================================================
-/// 🌱 DEFAULT THRESHOLDS
-/// ===========================================================================
+// THRESHOLDS
+
 class ThresholdConst {
   static const double ppmMin = 800.0;
   static const double ppmMax = 1100.0;

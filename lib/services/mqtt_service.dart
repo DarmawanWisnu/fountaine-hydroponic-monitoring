@@ -77,7 +77,7 @@ class MqttService {
 
       final topicTelemetry = MqttConst.tTelemetry(kitId);
 
-      // ✅ SUBSCRIBE KEDUA TOPIK (telemetry + status)
+      // SUBSCRIBE KEDUA TOPIK (telemetry + status)
       c.subscribe(topicTelemetry, MqttQos.atLeastOnce);
       c.subscribe(topicStatus, MqttQos.atLeastOnce);
 
@@ -117,7 +117,7 @@ class MqttService {
     } catch (e, s) {
       _connStateCtrl.add(MqttConnState.error);
       _client?.disconnect();
-      // 🔴 log error connect biar ketahuan
+      // log error connect
       // ignore: avoid_print
       print('MQTT connect error: $e\n$s');
       _scheduleReconnect();
@@ -143,7 +143,7 @@ class MqttService {
     // === Sama persis dengan publisher.py ===
     final map = <String, dynamic>{
       "id": toInt(j["id"]),
-      "ppm": toDouble(j["ppm"] ?? j["TDS"]),
+      "ppm": toDouble(j["ppm"]) == 0 ? toDouble(j["TDS"]) : toDouble(j["ppm"]),
       "ph": toDouble(j["ph"] ?? j["pH"]),
       "tempC": toDouble(j["temperature"] ?? j["DHT_temp"]),
       "humidity": toDouble(j["humidity"] ?? j["DHT_humidity"]),
